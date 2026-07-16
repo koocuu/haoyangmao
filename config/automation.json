@@ -3,8 +3,8 @@
   "leadInboxFile": "data/inbox/leads.txt",
   "quoteInboxDir": "data/inbox/quotes",
   "cloudSync": {
-    "enabled": false,
-    "url": ""
+    "enabled": true,
+    "url": "https://haoyangmao.koocuu.com"
   },
   "kdocsSources": [
     {

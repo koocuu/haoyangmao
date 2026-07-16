@@ -69,8 +69,8 @@ node scripts\cloud-sync.js
 访问以下地址：
 
 ```text
-https://你的域名.vercel.app/api/automation/status
-https://你的域名.vercel.app/api/automation/state
+https://haoyangmao.koocuu.com/api/automation/status
+https://haoyangmao.koocuu.com/api/automation/state
 ```
 
 状态接口应显示：
