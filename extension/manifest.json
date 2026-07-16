@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "好羊毛投喂器",
+  "version": "0.1.0",
+  "description": "把当前页面标题、链接和选中文本发送到好羊毛套利雷达。",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "action": {
+    "default_title": "发送到好羊毛",
+    "default_popup": "popup.html"
+  }
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>&#22909;&#32650;&#27611; - &#25968;&#30721;&#22871;&#21033;&#38647;&#36798;</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div>
+          <h1>&#22909;&#32650;&#27611;</h1>
+          <p id="statusLine">AH &#27599;&#26085;&#34892;&#24773; + &#20248;&#24800;&#25991;&#26412;&#21028;&#26029;</p>
+        </div>
+        <div class="stats">
+          <div>
+            <span>&#25253;&#20215;</span>
+            <strong id="quoteCount">0</strong>
+          </div>
+          <div>
+            <span>&#20998;&#26512;</span>
+            <strong id="historyCount">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="workbench">
+        <div class="panel judge-panel">
+          <div class="panel-head">
+            <h2>&#26426;&#20250;&#21028;&#26029;</h2>
+            <span id="judgeBadge" class="badge idle">&#24453;&#20998;&#26512;</span>
+          </div>
+          <textarea id="dealInput" rows="6" placeholder="&#31896;&#36148;&#20320;&#30475;&#21040;&#30340;&#20248;&#24800;&#65306;&#10;PDD &#30334;&#20159;&#34917;&#36148; Osmo Pocket 3 &#26631;&#20934;&#29256; &#21048;&#21518; 1850"></textarea>
+          <button id="analyzeBtn" type="button">&#20998;&#26512;&#21033;&#28070;</button>
+          <div id="resultEmpty" class="empty-result">&#31896;&#36148;&#20248;&#24800;&#25991;&#26412;&#65292;&#31995;&#32479;&#20250;&#20351;&#29992;&#26368;&#26032; AH &#34892;&#24773;&#33258;&#21160;&#21028;&#26029;&#12290;</div>
+          <div id="resultCard" class="result-card hidden">
+            <div>
+              <span>SKU</span>
+              <strong id="resultSku">-</strong>
+            </div>
+            <div class="result-grid">
+              <div>
+                <span>&#20080;&#20837;</span>
+                <b id="buyPrice">-</b>
+              </div>
+              <div>
+                <span>&#20445;&#24213;&#22238;&#25910;</span>
+                <b id="sellPrice">-</b>
+              </div>
+              <div>
+                <span>&#24555;&#20986;&#22238;&#25910;</span>
+                <b id="quickPrice">-</b>
+              </div>
+              <div>
+                <span>&#20445;&#24213;&#20928;&#21033;</span>
+                <b id="profit">-</b>
+              </div>
+            </div>
+            <p id="reasonText"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel source-panel">
+        <div class="panel-head">
+          <h2>AH &#34892;&#24773;&#28304;</h2>
+          <div class="source-status">
+            <span id="kdocsStatus">&#26410;&#37319;&#38598;</span>
+            <a id="kdocsEvidence" class="hidden" target="_blank" rel="noreferrer">&#26597;&#30475;&#35777;&#25454;</a>
+          </div>
+        </div>
+        <div id="localSourceActions" class="source-actions">
+          <button id="kdocsOpenBtn" type="button">&#25171;&#24320;&#25480;&#26435;&#27983;&#35272;&#22120;</button>
+          <button id="kdocsCollectBtn" type="button">&#37319;&#38598;&#19968;&#27425;</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>&#25253;&#20215;&#24211;</h2>
+          <input id="quoteSearch" class="search" placeholder="&#25628;&#32034; SKU">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>&#21697;&#31867;</th>
+                <th>&#25253;&#20215;</th>
+                <th>&#36136;&#37327;</th>
+                <th>&#26469;&#28304;</th>
+                <th>&#26102;&#38388;</th>
+              </tr>
+            </thead>
+            <tbody id="quoteTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>&#26368;&#36817;&#20998;&#26512;</h2>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

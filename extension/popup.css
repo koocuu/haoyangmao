@@ -1,0 +1,52 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 340px;
+  margin: 0;
+  color: #1f2933;
+  background: #f3f5f7;
+  font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+}
+
+main {
+  padding: 14px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+p {
+  margin: 0 0 10px;
+  color: #697586;
+  line-height: 1.5;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid #d9e1ea;
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+  font: inherit;
+}
+
+button {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+#hint {
+  margin-top: 10px;
+  font-size: 12px;
+}

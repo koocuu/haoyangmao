@@ -1,0 +1,43 @@
+{
+  "intervalMinutes": 1440,
+  "leadInboxFile": "data/inbox/leads.txt",
+  "quoteInboxDir": "data/inbox/quotes",
+  "cloudSync": {
+    "enabled": false,
+    "url": ""
+  },
+  "kdocsSources": [
+    {
+      "id": "ah-kdocs",
+      "name": "AH收货行情表",
+      "url": "https://kdocs.cn/l/ciUyT3wSXLX0",
+      "port": 9223
+    }
+  ],
+  "sourceWatchers": [
+    {
+      "id": "smzdm-iphone",
+      "enabled": true,
+      "kind": "html",
+      "source": "smzdm",
+      "url": "https://search.smzdm.com/?c=home&s=iPhone%2016",
+      "keywords": ["iPhone 16", "券", "到手", "补贴"]
+    },
+    {
+      "id": "smzdm-switch",
+      "enabled": true,
+      "kind": "html",
+      "source": "smzdm",
+      "url": "https://search.smzdm.com/?c=home&s=Switch%20OLED",
+      "keywords": ["Switch", "OLED", "券", "到手"]
+    },
+    {
+      "id": "smzdm-ps5",
+      "enabled": true,
+      "kind": "html",
+      "source": "smzdm",
+      "url": "https://search.smzdm.com/?c=home&s=PS5",
+      "keywords": ["PS5", "券", "到手", "补贴"]
+    }
+  ]
+}

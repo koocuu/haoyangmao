@@ -1,0 +1,16 @@
+node_modules/
+.vercel/
+.env
+.env.*
+config/cloud-sync.local.json
+
+data/state*.json
+data/automation-status.json
+data/disabled-manual-sources-*.json
+data/browser-profile/
+data/debug-*/
+data/kdocs/
+data/screenshots/
+data/inbox/screenshots/
+data/inbox/quotes/ah-kdocs-*
+data/inbox/quotes/windows-*

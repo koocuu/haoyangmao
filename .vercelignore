@@ -1,0 +1,12 @@
+data/
+docs/
+extension/
+mcp/
+scripts/
+tests/
+automation-server.js
+dev-server.js
+AUTOMATION.md
+*.bat
+PRODUCT.md
+PROGRESS.md
