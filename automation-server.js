@@ -32,6 +32,7 @@ const staticTypes = {
 
 let timer = null;
 let schedulerProcess = null;
+let kdocsCollectionActive = false;
 
 function loadJson(filePath, fallback) {
   try {
@@ -510,13 +511,17 @@ function getKdocsSource(config, id = "ah-kdocs") {
 
 function runKdocsSession(command, source) {
   const scriptPath = path.join(root, "scripts", "kdocs-session.js");
+  const timeoutMs = command === "collect" ? 5 * 60 * 1000 : 15000;
   const result = spawnSync(process.execPath, [scriptPath, command, source.url, String(source.port || 9223)], {
     encoding: "utf8",
-    timeout: command === "collect" ? 120000 : 15000
+    timeout: timeoutMs
   });
 
   const output = (result.stdout || result.stderr || "").trim();
   if (result.status !== 0) {
+    if (result.error?.code === "ETIMEDOUT") {
+      throw new Error(`KDocs ${command} 超过 ${Math.round(timeoutMs / 60000)} 分钟，已保留上一版 AH 报价。`);
+    }
     throw new Error(output || `kdocs ${command} failed`);
   }
 
@@ -1194,6 +1199,10 @@ function recordKdocsSuccess(result) {
 }
 
 function collectKdocsWithStatus(id = "ah-kdocs") {
+  if (schedulerProcess || kdocsCollectionActive) {
+    throw new Error("AH 采集正在进行，请等待当前任务完成。");
+  }
+  kdocsCollectionActive = true;
   saveSchedulerStatus({ active: true, lastAttemptAt: new Date().toISOString() });
   try {
     const result = collectKdocsSource(id);
@@ -1206,11 +1215,13 @@ function collectKdocsWithStatus(id = "ah-kdocs") {
       lastError: error.message
     });
     throw error;
+  } finally {
+    kdocsCollectionActive = false;
   }
 }
 
 function runScheduledRefresh(reason = "timer") {
-  if (schedulerProcess) return false;
+  if (schedulerProcess || kdocsCollectionActive) return false;
   saveSchedulerStatus({ active: true, lastAttemptAt: new Date().toISOString(), lastReason: reason });
 
   const scriptPath = path.join(root, "scripts", "scheduled-refresh.js");
