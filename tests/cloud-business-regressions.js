@@ -15,6 +15,15 @@ module.exports = async function run({ call, value, url, lead, quote, evidence, c
     assert.equal(saved.lead.evidence.source, source); assert.equal(saved.result.status, "pending_confirmation");
   }
 
+  for (const source of ["踏浪", "小鸽"]) {
+    const record = value(await call(url, "submit_lead", makeLead(`miniapp-${source}`)));
+    const saved = value(await call(url, "submit_quote", makeQuote(record.id, `miniapp-quote-${source}`, { evidence: evidence(source, `fixture-only:direct-miniapp:${source}`) })));
+    assert.equal(saved.quotes[0].evidence.source, source);
+    assert.deepEqual(saved.quotes[0].parseWarnings, []);
+    assert.equal(saved.result.status, "eligible");
+    assert.equal(saved.notification.status, "not_configured");
+  }
+
   const unverified = makeLead("nova-unknown-conditions");
   unverified.conditions.eligibility = { status: "unknown", detail: "仅测试：国补资格尚未核实" };
   unverified.conditions.stock = { status: "unknown", detail: "仅测试：库存尚未核实" };
