@@ -33,6 +33,21 @@
 
 ## 浏览器核对
 
+### Vercel 生产验收
+
+2026-10-12 17:17（Asia/Shanghai），提交 `c658934` 的 Production 部署 READY，地址 `https://haoyangmao.koocuu.com/api/mcp`。真实 HTTPS + 私有 Blob 验收通过：
+
+- 无效凭证 401、非法 Origin 403；initialize 200，initialized 202；四个指定工具可调用，网页只读凭证仅列出 get_status，提交被拒绝。
+- 模拟购买 5599、净回收 5800，计算净利润 151；同键同参回放 `replayed:true` 且仅保存一条报价，同键异参拒绝。
+- 私有存储读取后结果仍一致；网页读取两条验收记录、显示 151 元，输入框自动清空，localStorage 无凭证、无横向溢出。断开后记录清空。
+- `.env.production-mcp.json`、本地配置、私有文件、本地 automation-server 与 stdio MCP 路径未被公开提供。
+- 原 `/api/automation/state` 仍返回 200，保留 173 条 AH 报价；旧报价日期在网页明确显示，不作为新鲜 Grok 核验使用。
+- 验收记录明确标注模拟来源，并在结束时标记待确认；没有发送真实提醒。生产 Telegram 状态为 `not_configured`，需接入真实通道后单独验收。
+
+首次 Git 自动部署曾在获取 Git 信息时失败；对同一提交重新部署后构建成功。后续修复提交自动部署成功。生产测试同时发现并修复下文所述弱 ETag 问题。
+
+### 本地浏览器验收
+
 使用 Cockpit browser 打开测试页面，通过独立只读测试凭证连接真实本地 MCP 监听器，完成 initialize、initialized 和 get_status。DOM 检查实际返回：
 
 ```json

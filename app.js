@@ -176,6 +176,16 @@ function renderChecks(items) {
   list.textContent = "";
   const labels = { eligible: "已核验 · 达到门槛", pending_confirmation: "待确认", below_threshold: "未达利润门槛" };
   const notices = { not_sent: "未发送", not_configured: "未配置提醒", sent: "已发送一次", delivery_unknown: "送达未确认，请人工核对（不自动重发）" };
+  const conditionLabels = { finalPrice: "最终实付", eligibility: "购买资格", stock: "库存", purchaseRules: "购买限制", specification: "回收规格", acceptance: "收货条件", deductions: "扣费条件", settlement: "结算条件" };
+  const conditionStates = { verified: "已核实", unknown: "待确认", failed: "不满足" };
+  const describeEvidence = (item, kind) => [
+    `${kind}：${item.sku}`,
+    `来源：${item.evidence.source}；核验时间：${formatTime(item.evidence.observedAt)}`,
+    `证据编号/引用：${item.evidence.reference}`,
+    `原文：${item.text || item.evidence.excerpt}`,
+    `证据摘要：${item.evidence.excerpt}`,
+    ...Object.entries(item.conditions || {}).map(([key, value]) => `${conditionLabels[key] || "核验条件"}：${conditionStates[value.status] || "待确认"} — ${value.detail}`)
+  ].join("\n");
   for (const check of items) {
     const row = document.createElement("article");
     const title = document.createElement("strong");
@@ -183,7 +193,8 @@ function renderChecks(items) {
     const expired = result.validUntil && Date.parse(result.validUntil) <= Date.now();
     title.textContent = `${expired ? "待确认 · 核验已过期" : labels[result.status] || "待确认"} — ${check.lead?.sku || check.pendingText || check.id}`;
     const detail = document.createElement("p");
-    detail.textContent = `${result.status === "pending_confirmation" ? "预估净利润" : "净利润"} ${expired || result.netProfit === null ? "待核验" : formatSignedMoney(result.netProfit)}；提醒：${notices[check.notification.status] || "待处理"}。${(result.reasons || []).join("；")}`;
+    const reasons = (result.reasons || []).map((reason) => reason.startsWith("purchase.") ? `${conditionLabels[reason.slice(9)] || "购买条件"}尚未通过核验` : reason);
+    detail.textContent = `${result.status === "pending_confirmation" ? "预估净利润" : "净利润"} ${expired || result.netProfit === null ? "待核验" : formatSignedMoney(result.netProfit)}；提醒：${notices[check.notification.status] || "待处理"}。${reasons.join("；")}`;
     row.appendChild(title); row.appendChild(detail);
     if (check.lead) {
       const source = document.createElement("p");
@@ -194,7 +205,10 @@ function renderChecks(items) {
       const summary = document.createElement("summary"); summary.textContent = "来源与核验证据";
       const text = document.createElement("pre");
       text.style.whiteSpace = "pre-wrap";
-      text.textContent = JSON.stringify({ purchase: check.lead, quotes: check.quotes, costs: result.costs, validUntil: result.validUntil }, null, 2);
+      text.textContent = [describeEvidence(check.lead, `购买实付 ${formatMoney(check.lead.buyPrice)}`),
+        ...check.quotes.map((item) => describeEvidence(item, `净回收报价 ${formatMoney(item.price)}`)),
+        `额外成本：运费 ${formatMoney(result.costs.shippingCost)}，平台费 ${formatMoney(result.costs.platformCost)}，风险预留 ${formatMoney(result.costs.riskBuffer)}\n核验有效至：${formatTime(result.validUntil)}`
+      ].join("\n\n");
       evidence.appendChild(summary); evidence.appendChild(text); row.appendChild(evidence);
     }
     list.appendChild(row);
