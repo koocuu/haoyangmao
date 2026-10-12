@@ -35,6 +35,7 @@ async function main() {
     if (req.method === "GET") {
       reads++;
       assert.equal(options.useCache, false);
+      assert.equal(options.headers["Accept-Encoding"], "identity");
       if (state === null) { res.writeHead(404); res.end(); return; }
       const value = typeof state === "string" ? state : JSON.stringify(state);
       res.writeHead(200, { etag: `"${revision}"`, "content-length": Buffer.byteLength(value) }); res.end(value); return;
@@ -208,7 +209,46 @@ async function main() {
   }
   await sdkContract();
   await boundedTransactions();
+  await safeDiagnostics();
   await deploymentClosure();
+}
+
+async function safeDiagnostics() {
+  const sdkTypes = require("@vercel/blob");
+  const sdk = { ...sdkTypes };
+  const store = new BlobStore({ token: "fixture", sdk });
+  const snapshot = (text = JSON.stringify(empty()), etag = '"v1"') => ({ statusCode: 200, blob: { etag, size: 0 }, stream: new Response(text).body });
+  const reason = (code) => (error) => error instanceof Unavailable && error.reason === code;
+  sdk.get = async () => { throw new sdkTypes.BlobAccessError(); };
+  await assert.rejects(store.read(), (e) => reason("read_sdk_failure")(e) && e.sdkClass === "BlobAccessError");
+  sdk.get = async () => ({ statusCode: 304 });
+  await assert.rejects(store.read(), reason("read_metadata_invalid"));
+  sdk.get = async () => snapshot(undefined, "");
+  await assert.rejects(store.read(), reason("read_etag_missing"));
+  sdk.get = async () => snapshot("private-invalid-json");
+  await assert.rejects(store.read(), reason("read_json_decode"));
+  sdk.get = async () => snapshot("null");
+  await assert.rejects(store.read(), reason("read_state_invalid"));
+  sdk.put = async () => ({});
+  await assert.rejects(store.write(empty(), '"v1"'), reason("write_etag_missing"));
+  sdk.put = async () => { throw new sdkTypes.BlobServiceNotAvailable(); };
+  await assert.rejects(store.write(empty(), '"v1"'), (e) => reason("write_sdk_failure")(e) && e.sdkClass === "BlobServiceNotAvailable");
+  const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../config/remote-mcp.example.json")));
+  delete config.localImportWorkspace; config.allowedHosts = ["mcp.fixture.test"];
+  const env = { HYM_GROK_TOKEN: crypto.randomBytes(32).toString("hex"), HYM_DASHBOARD_TOKEN: crypto.randomBytes(32).toString("hex"), HYM_MCP_CONFIG_JSON: JSON.stringify(config), HYM_MCP_BLOB_READ_WRITE_TOKEN: "fixture" };
+  const sensitive = "SENSITIVE_fixture_token https://private-fixture.invalid evidence_private";
+  sdk.get = async () => { throw new sdkTypes.BlobError(sensitive); };
+  const handler = createHandler({ env, storeFactory: () => store, notifyFactory: () => null });
+  let body, status; const logs = [], previous = console.error;
+  console.error = (...items) => logs.push(items);
+  try {
+    await handler({ method: "POST", headers: { host: "mcp.fixture.test", authorization: `Bearer ${env.HYM_GROK_TOKEN}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: { jsonrpc: "2.0", id: 1, method: "initialize" } }, { setHeader() {}, set statusCode(value) { status = value; }, end(value) { body = value; } });
+  } finally { console.error = previous; }
+  assert.equal(status, 503);
+  assert.deepEqual(logs, [["MCP_STORAGE", "read_sdk_failure", "BlobError"]]);
+  assert.ok(!JSON.stringify({ logs, body }).includes(sensitive));
+  assert.ok(!body.includes("read_sdk_failure"), "diagnostic details must remain server-side");
+  console.log("safe storage diagnostics ok: static reason codes and allowlisted SDK classes only; public 503 unchanged, no secret/message/URL/evidence logging");
 }
 
 async function boundedTransactions() {
@@ -239,6 +279,15 @@ async function sdkContract() {
   try {
     origin.intercept({ path: `/${PATH}?cache=0`, method: "GET" }).reply(404);
     assert.equal((await store.read()).etag, null);
+    const getPath = `/${PATH}?cache=0`;
+    // Actual SDK transport must ask for identity and return the paired strong ETag.
+    origin.intercept({ path: getPath, method: "GET", headers: { "accept-encoding": "identity" } }).reply(200, JSON.stringify(empty()), { headers: { etag: '"strong-origin"', "content-type": "application/json" } });
+    assert.equal((await store.read()).etag, '"strong-origin"');
+    // Even if a server ignores identity and serves compressed content, never
+    // strip a weak ETag or submit it as a CAS validator. No Content-Length is OK.
+    const compressed = require("node:zlib").gzipSync(JSON.stringify(empty()));
+    origin.intercept({ path: getPath, method: "GET", headers: { "accept-encoding": "identity" } }).reply(200, compressed, { headers: { etag: 'W/"same-origin"', "content-encoding": "gzip", "content-type": "application/json" } });
+    await assert.rejects(store.transaction(() => { throw new Error("weak response must stop before mutation/write"); }), (e) => e instanceof Unavailable && e.reason === "read_etag_weak");
     let headers;
     api.intercept({ path: putPath, method: "PUT" }).reply((options) => { headers = options.headers; return { statusCode: 200, data: { url: `https://fixture.private.blob.vercel-storage.com/${PATH}`, pathname: PATH, contentType: "application/json", contentDisposition: "attachment", etag: '"created"' } }; });
     await store.write(empty(), null);
@@ -252,7 +301,7 @@ async function sdkContract() {
     api.intercept({ path: putPath, method: "PUT" }).reply(() => { attempts++; return { statusCode: 503, data: { error: { code: "service_unavailable" } } }; }).persist();
     await assert.rejects(store.write(empty(), '"created"'), Unavailable);
     assert.equal(attempts, 1, "SDK must not retry ambiguous writes internally");
-    console.log("Blob SDK 2.6.1 mocked transport ok: private cache=0, exclusive-create headers, conditional ETag, definite conflicts, ambiguous 503 exactly one attempt");
+    console.log("Blob SDK 2.6.1 mocked transport ok: private cache=0 and identity encoding, strong paired ETag, compressed weak ETag rejected before CAS, exclusive create, definite conflicts, ambiguous 503 exactly one attempt");
   } finally { setGlobalDispatcher(previous); await mock.close(); }
 }
 
