@@ -1,125 +1,20 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>&#22909;&#32650;&#27611; - &#25968;&#30721;&#22871;&#21033;&#38647;&#36798;</title>
-    <link rel="stylesheet" href="styles.css">
-  </head>
-  <body>
-    <main class="app">
-      <header class="header">
-        <div>
-          <h1>&#22909;&#32650;&#27611;</h1>
-          <p id="statusLine">AH &#27599;&#26085;&#34892;&#24773; + &#20248;&#24800;&#25991;&#26412;&#21028;&#26029;</p>
-        </div>
-        <div class="stats">
-          <div>
-            <span>&#25253;&#20215;</span>
-            <strong id="quoteCount">0</strong>
-          </div>
-          <div>
-            <span>&#20998;&#26512;</span>
-            <strong id="historyCount">0</strong>
-          </div>
-        </div>
-      </header>
-
-      <section class="workbench">
-        <div class="panel judge-panel">
-          <div class="panel-head">
-            <h2>&#26426;&#20250;&#21028;&#26029;</h2>
-            <span id="judgeBadge" class="badge idle">&#24453;&#20998;&#26512;</span>
-          </div>
-          <textarea id="dealInput" rows="6" placeholder="&#31896;&#36148;&#20320;&#30475;&#21040;&#30340;&#20248;&#24800;&#65306;&#10;PDD &#30334;&#20159;&#34917;&#36148; Osmo Pocket 3 &#26631;&#20934;&#29256; &#21048;&#21518; 1850"></textarea>
-          <button id="analyzeBtn" type="button">&#20998;&#26512;&#21033;&#28070;</button>
-          <div id="resultEmpty" class="empty-result">&#31896;&#36148;&#20248;&#24800;&#25991;&#26412;&#65292;&#31995;&#32479;&#20250;&#20351;&#29992;&#26368;&#26032; AH &#34892;&#24773;&#33258;&#21160;&#21028;&#26029;&#12290;</div>
-          <div id="resultCard" class="result-card hidden">
-            <div>
-              <span>SKU</span>
-              <strong id="resultSku">-</strong>
-            </div>
-            <div class="result-grid">
-              <div>
-                <span>&#20080;&#20837;</span>
-                <b id="buyPrice">-</b>
-              </div>
-              <div>
-                <span>&#20445;&#24213;&#22238;&#25910;</span>
-                <b id="sellPrice">-</b>
-              </div>
-              <div>
-                <span>&#24555;&#20986;&#22238;&#25910;</span>
-                <b id="quickPrice">-</b>
-              </div>
-              <div>
-                <span>&#20445;&#24213;&#20928;&#21033;</span>
-                <b id="profit">-</b>
-              </div>
-            </div>
-            <p id="reasonText"></p>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>Grok 商品核验</h2><span id="checksStatus">等待核验记录</span></div>
-        <details>
-          <summary>连接商品核验</summary>
-          <p>填入只读凭证即可连接本站核验结果。凭证仅在本页内存中使用，刷新后需重新填写。</p>
-          <label>MCP 地址 <input id="checksUrl" type="url" placeholder="https://haoyangmao.koocuu.com/api/mcp" autocomplete="off"></label>
-          <label>只读凭证 <input id="checksToken" type="password" autocomplete="off"></label>
-          <button id="checksConnect" type="button">连接</button>
-          <button id="checksDisconnect" type="button">断开并清除凭证</button>
-        </details>
-        <div id="checksList" class="history-list"></div>
-      </section>
-
-      <section class="panel source-panel">
-        <div class="panel-head">
-          <h2>AH &#34892;&#24773;&#28304;</h2>
-          <div class="source-status">
-            <span id="kdocsStatus">&#26410;&#37319;&#38598;</span>
-            <a id="kdocsEvidence" class="hidden" target="_blank" rel="noreferrer">&#26597;&#30475;&#35777;&#25454;</a>
-          </div>
-        </div>
-        <div id="localSourceActions" class="source-actions">
-          <button id="kdocsOpenBtn" type="button">&#25171;&#24320;&#25480;&#26435;&#27983;&#35272;&#22120;</button>
-          <button id="kdocsCollectBtn" type="button">&#37319;&#38598;&#19968;&#27425;</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>&#25253;&#20215;&#24211;</h2>
-          <input id="quoteSearch" class="search" placeholder="&#25628;&#32034; SKU">
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>&#21697;&#31867;</th>
-                <th>&#25253;&#20215;</th>
-                <th>&#36136;&#37327;</th>
-                <th>&#26469;&#28304;</th>
-                <th>&#26102;&#38388;</th>
-              </tr>
-            </thead>
-            <tbody id="quoteTable"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>&#26368;&#36817;&#20998;&#26512;</h2>
-        </div>
-        <div id="historyList" class="history-list"></div>
-      </section>
-    </main>
-
-    <script src="lib/deal-engine.js"></script>
-    <script src="app.js"></script>
-  </body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>好羊毛 · 商品机会</title><link rel="stylesheet" href="styles.css"></head>
+<body>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="./" aria-label="好羊毛首页"><span class="brand-mark" aria-hidden="true">羊</span><strong>好羊毛</strong><span class="brand-en">haoyangmao</span></a><span class="nav-current">机会列表</span><div class="topbar-actions"><span class="bot-note">Bot 接入状态未验证</span><button id="settingsOpen" class="button subtle" type="button">设置</button></div></div></header>
+<main class="app">
+<section class="page-heading"><div><h1>机会列表</h1><p>Bot 提交核验结果，系统计算净利润。</p></div><div class="sync-controls"><span id="checksStatus" role="status" aria-live="polite">接口未连接</span><button id="refreshBtn" class="button secondary" type="button" disabled>刷新</button></div></section>
+<div class="overview" aria-label="机会概览"><span>全部 <b id="countAll">0</b></span><span><i class="dot verified"></i>已核实 <b id="countVerified">0</b></span><span><i class="dot pending"></i>待确认 <b id="countPending">0</b></span><span><i class="dot expired"></i>已过期 <b id="countExpired">0</b></span></div>
+<div id="workspace" class="workspace" data-detail-open="false">
+<section class="list-panel" aria-label="商品机会列表">
+<div class="filters"><label class="search-label"><span class="sr-only">搜索商品、规格或来源</span><input id="opportunitySearch" type="search" placeholder="搜索商品、规格或来源" autocomplete="off"></label><label><span class="sr-only">品类</span><select id="categoryFilter"><option value="all">全部品类</option><option value="phone">手机</option><option value="tablet">平板</option><option value="console">主机</option><option value="earbuds">耳机</option><option value="camera">影像</option><option value="other">其他</option></select></label><div id="statusFilters" class="status-filters" role="group" aria-label="核验状态筛选"><button type="button" data-status="all" aria-pressed="true">全部</button><button type="button" data-status="verified" aria-pressed="false">已核实</button><button type="button" data-status="pending" aria-pressed="false">待确认</button><button type="button" data-status="expired" aria-pressed="false">已过期</button></div><label><span class="sr-only">排序</span><select id="sortOrder"><option value="profit">净利润优先</option><option value="recent">最新核验</option><option value="price">购买价从低到高</option></select></label></div>
+<div class="list-columns" aria-hidden="true"><span>商品</span><span>购买价</span><span>回收价</span><span>净利润</span><span>核验状态</span></div><div id="checksList" class="opportunity-list" aria-busy="false"></div>
+<div id="listState" class="list-state" role="status"><span class="empty-symbol" aria-hidden="true">◎</span><h2 id="stateTitle">连接后查看商品机会</h2><p id="stateDescription">在设置中填写只读凭证，读取 Bot 提交的核验记录。这里不会生成示例机会。</p><button id="stateAction" class="button secondary" type="button">打开设置</button></div>
+<footer class="list-footer"><span>净利润由服务端扣除运费、平台费及风险缓冲后计算</span><span id="listCount">0 条记录</span></footer></section>
+<aside id="detailPanel" class="detail-panel" aria-label="核验详情"><div class="detail-head"><button id="detailBack" class="button subtle detail-back" type="button">← 返回列表</button><h2>核验详情</h2><button id="detailClose" class="icon-button" type="button" aria-label="关闭核验详情">×</button></div><div id="detailContent"><div class="detail-placeholder"><span aria-hidden="true">↗</span><h3>选择一件商品</h3><p>查看价格依据、购买条件与回收规格。</p></div></div></aside>
+</div><p class="page-note">接口连接仅表示网页可以读取记录，不代表 Grok Bot 已完成接入。过期或关键条件未核实的记录不提供有效净利润。</p>
+</main>
+<dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle"><div class="dialog-head"><h2 id="settingsTitle">连接设置</h2><button id="settingsClose" class="icon-button" type="button" aria-label="关闭设置">×</button></div><p class="muted">本页只读展示 Grok 商品核验结果，不表示 Bot 已接入。凭证仅保存在当前页面内存中，刷新后需重新填写。</p><form id="connectionForm"><label for="checksUrl">MCP 地址</label><input id="checksUrl" type="url" required autocomplete="off" spellcheck="false"><label for="checksToken">只读凭证</label><input id="checksToken" type="password" autocomplete="off" spellcheck="false" placeholder="填写后立即清空输入框"><p id="settingsMessage" class="settings-message" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="checksConnect" class="button primary" type="submit">连接接口</button><button id="checksDisconnect" class="button secondary" type="button" disabled>断开并清除凭证</button></div></form></dialog>
+<script src="lib/deal-engine.js"></script><script src="app.js"></script>
+</body></html>
