@@ -5,9 +5,13 @@
   "description": "Local-first digital arbitrage radar with a Vercel cloud dashboard",
   "scripts": {
     "start": "node automation-server.js",
-    "test": "node tests/smoke.js && node tests/automation-smoke.js && node tests/quote-ocr-parser-smoke.js && node tests/quote-cleaner-smoke.js && node tests/cloud-snapshot-smoke.js && node tests/cloud-api-smoke.js && node tests/mcp-smoke.js"
+    "mcp:remote": "node mcp/remote-server.js",
+    "mcp:schema": "node scripts/remote-schema.js",
+    "test:remote": "node tests/remote-mcp-e2e.js",
+    "test:cloud-mcp": "node tests/cloud-mcp-e2e.js",
+    "test": "node tests/smoke.js && node tests/automation-smoke.js && node tests/quote-ocr-parser-smoke.js && node tests/quote-cleaner-smoke.js && node tests/cloud-snapshot-smoke.js && node tests/cloud-api-smoke.js && node tests/mcp-smoke.js && node tests/remote-mcp-e2e.js && node tests/cloud-mcp-e2e.js"
   },
   "dependencies": {
-    "@vercel/blob": "^2.6.1"
+    "@vercel/blob": "2.6.1"
   }
 }

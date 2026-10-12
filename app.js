@@ -1,3 +1,4 @@
+const { parseDealV2, scoreQuoteV2, extractSkuFactsV2, normalizeForMatchV2, calculateNetProfit } = HymDealEngine;
 const copy = {
   idle: "\u7c98\u8d34\u3001\u62d6\u5165\u6216\u70b9\u51fb\u9009\u56fe",
   uploading: "\u6b63\u5728\u4e0a\u4f20\u622a\u56fe...",
@@ -70,18 +71,42 @@ const els = {
 let quotes = [];
 let history = loadHistory();
 let lastSyncedQuoteSuccessAt = "";
+let remoteChecksConnection = null;
 
 init();
 
 function init() {
+  document.querySelector("#checksUrl").value = location.protocol === "https:"
+    ? new URL("/api/mcp", location.origin).href : "http://127.0.0.1:8766/mcp";
   bindEvents();
   refreshState();
   refreshAutomationStatus();
+  refreshChecks();
+  if (typeof setInterval === "function") setInterval(() => { if (!document.hidden) refreshChecks(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshChecks(); });
   if (typeof setInterval === "function") setInterval(refreshAutomationStatus, 30000);
   renderHistory();
 }
 
 function bindEvents() {
+  document.querySelector("#checksConnect").addEventListener("click", () => {
+    try {
+      const url = new URL(document.querySelector("#checksUrl").value);
+      const loopback = url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname);
+      if ((url.protocol !== "https:" && !loopback) || !["/mcp", "/api/mcp"].includes(url.pathname) || url.username || url.password || url.search || url.hash) throw new Error("请输入 HTTPS 的 /api/mcp 地址，或本机 loopback 的 /mcp 地址");
+      const token = document.querySelector("#checksToken").value.trim();
+      if (!token) throw new Error("请输入只读凭证");
+      remoteChecksConnection = { url: url.href, token };
+      document.querySelector("#checksToken").value = "";
+      refreshChecks();
+    } catch (error) { document.querySelector("#checksStatus").textContent = error.message; }
+  });
+  document.querySelector("#checksDisconnect").addEventListener("click", () => {
+    remoteChecksConnection = null;
+    document.querySelector("#checksToken").value = "";
+    document.querySelector("#checksList").textContent = "";
+    refreshChecks();
+  });
   els.analyzeBtn.addEventListener("click", analyzeDeal);
   els.kdocsOpenBtn.addEventListener("click", openKdocsSource);
   els.kdocsCollectBtn.addEventListener("click", collectKdocsSource);
@@ -89,6 +114,91 @@ function bindEvents() {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") analyzeDeal();
   });
   els.quoteSearch.addEventListener("input", renderQuotes);
+}
+
+async function refreshChecks() {
+  const connection = remoteChecksConnection;
+  const status = document.querySelector("#checksStatus");
+  if (!connection) {
+    document.querySelector("#checksList").textContent = "";
+    status.textContent = "请展开连接设置，使用只读凭证读取核验";
+    return;
+  }
+  if (connection.loading) return;
+  connection.loading = true;
+  try {
+    let items = [];
+    if (connection) {
+      if (!connection.initialized) {
+        const response = await fetch(connection.url, {
+          method: "POST", redirect: "error", signal: AbortSignal.timeout(12000),
+          headers: { Authorization: `Bearer ${connection.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: "init", method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "haoyangmao-dashboard", version: "1.0.0" } } })
+        });
+        if (!response.ok || !(await response.json()).result) throw new Error("初始化失败");
+        const ready = await fetch(connection.url, {
+          method: "POST", redirect: "error", signal: AbortSignal.timeout(12000),
+          headers: { Authorization: `Bearer ${connection.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })
+        });
+        if (!ready.ok) throw new Error("初始化失败");
+        connection.initialized = true;
+      }
+      let offset = 0;
+      do {
+        const response = await fetch(connection.url, {
+          method: "POST", redirect: "error", signal: AbortSignal.timeout(12000),
+          headers: { Authorization: `Bearer ${connection.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_status", arguments: { offset, limit: 50 } } })
+        });
+        if (!response.ok) throw new Error(`连接失败 HTTP ${response.status}`);
+        const rpc = await response.json();
+        if (rpc.error || rpc.result?.isError) throw new Error("核验读取失败，请检查凭证权限");
+        const result = rpc.result.structuredContent;
+        items.push(...result.items);
+        offset = result.nextOffset;
+      } while (offset !== null && items.length < 200);
+    }
+    if (connection !== remoteChecksConnection) return;
+    renderChecks(items);
+    status.textContent = `${items.length} 条近期核验 · 每 30 秒刷新`;
+  } catch {
+    if (connection !== remoteChecksConnection) return;
+    document.querySelector("#checksList").textContent = "";
+    status.textContent = "读取失败，请检查地址、凭证及服务状态";
+  } finally {
+    connection.loading = false;
+  }
+}
+
+function renderChecks(items) {
+  const list = document.querySelector("#checksList");
+  list.textContent = "";
+  const labels = { eligible: "已核验 · 达到门槛", pending_confirmation: "待确认", below_threshold: "未达利润门槛" };
+  const notices = { not_sent: "未发送", not_configured: "未配置提醒", sent: "已发送一次", delivery_unknown: "送达未确认，请人工核对（不自动重发）" };
+  for (const check of items) {
+    const row = document.createElement("article");
+    const title = document.createElement("strong");
+    const result = check.result;
+    const expired = result.validUntil && Date.parse(result.validUntil) <= Date.now();
+    title.textContent = `${expired ? "待确认 · 核验已过期" : labels[result.status] || "待确认"} — ${check.lead?.sku || check.pendingText || check.id}`;
+    const detail = document.createElement("p");
+    detail.textContent = `${result.status === "pending_confirmation" ? "预估净利润" : "净利润"} ${expired || result.netProfit === null ? "待核验" : formatSignedMoney(result.netProfit)}；提醒：${notices[check.notification.status] || "待处理"}。${(result.reasons || []).join("；")}`;
+    row.appendChild(title); row.appendChild(detail);
+    if (check.lead) {
+      const source = document.createElement("p");
+      const quote = check.quotes.find((item) => item.id === result.quoteId);
+      source.textContent = `购买 ${check.lead.evidence.source} · ${formatTime(check.lead.evidence.observedAt)}${quote ? `；回收 ${quote.evidence.source} · ${formatTime(quote.evidence.observedAt)}` : ""}`;
+      row.appendChild(source);
+      const evidence = document.createElement("details");
+      const summary = document.createElement("summary"); summary.textContent = "来源与核验证据";
+      const text = document.createElement("pre");
+      text.style.whiteSpace = "pre-wrap";
+      text.textContent = JSON.stringify({ purchase: check.lead, quotes: check.quotes, costs: result.costs, validUntil: result.validUntil }, null, 2);
+      evidence.appendChild(summary); evidence.appendChild(text); row.appendChild(evidence);
+    }
+    list.appendChild(row);
+  }
 }
 
 async function openKdocsSource() {
@@ -250,9 +360,8 @@ function analyzeDeal() {
   const quickQuote = ordered[ordered.length - 1];
   const floorPrice = floorQuote.price;
   const quickPrice = quickQuote.price;
-  const costs = policy.shippingCost + policy.platformCost + policy.riskBuffer;
-  const floorProfit = floorPrice - deal.price - costs;
-  const quickProfit = quickPrice - deal.price - costs;
+  const floorProfit = calculateNetProfit(floorPrice, deal.price, policy);
+  const quickProfit = calculateNetProfit(quickPrice, deal.price, policy);
   const verdict = buildVerdictV2(floorProfit, quickProfit);
   const warnings = getVariantWarningsV2(rawText);
   const warningText = warnings.length ? `\u89c4\u683c\u672a\u5b8c\u6574\uff08${warnings.join("\u3001")}\uff09\uff0c\u5df2\u6309\u6700\u4f4e\u5339\u914d\u4ef7\u4fdd\u5e95\u3002` : "\u989c\u8272\u3001\u7248\u672c\u548c\u72b6\u6001\u5df2\u6309\u8f93\u5165\u7ea6\u675f\u3002";
@@ -311,26 +420,6 @@ function normalizeForMatch(value) {
     .replace(/（|）|\(|\)|,|，|\.|。|-/g, "");
 }
 
-function parseDealV2(rawText) {
-  const text = String(rawText || "").normalize("NFKC");
-  const explicitPatterns = [
-    /(?:券后|到手|实付|成交|最终(?:价|价格)?|价格|售价|购入价?|买入价?)[^\d]{0,8}[¥￥]?\s*(\d{2,5})/gi,
-    /[¥￥]\s*(\d{2,5})/g
-  ];
-
-  for (const pattern of explicitPatterns) {
-    const matches = [...text.matchAll(pattern)]
-      .map((match) => Number(match[1]))
-      .filter(isPlausibleDealPriceV2);
-    if (matches.length) return { price: matches[matches.length - 1], explicit: true };
-  }
-
-  const candidates = [...text.matchAll(/\b(\d{3,5})\b/g)]
-    .filter((match) => isPlausibleDealPriceV2(Number(match[1])) && !isLikelySpecNumberV2(text, match))
-    .map((match) => Number(match[1]));
-  return { price: candidates.length ? candidates[candidates.length - 1] : 0, explicit: false };
-}
-
 function matchQuotesV2(rawText) {
   const dealFacts = extractSkuFactsV2(rawText);
   return quotes
@@ -338,146 +427,6 @@ function matchQuotesV2(rawText) {
     .filter((item) => Number.isFinite(item.score) && item.score >= 20)
     .sort((a, b) => b.score - a.score || Number(b.quote.qualityScore || 0) - Number(a.quote.qualityScore || 0) || b.quote.price - a.quote.price)
     .map((item) => item.quote);
-}
-
-function scoreQuoteV2(dealFacts, quote) {
-  const quoteFacts = extractSkuFactsV2(`${quote.normalizedSku || ""} ${quote.skuName || ""}`);
-  if (!dealFacts.family || !quoteFacts.family || dealFacts.family !== quoteFacts.family) return -Infinity;
-  if (dealFacts.model && quoteFacts.model && dealFacts.model !== quoteFacts.model) return -Infinity;
-  if (dealFacts.model && !quoteFacts.model) return -Infinity;
-  if (dealFacts.ram && (!quoteFacts.ram || dealFacts.ram !== quoteFacts.ram)) return -Infinity;
-  if (dealFacts.storage && (!quoteFacts.storage || dealFacts.storage !== quoteFacts.storage)) return -Infinity;
-  if (dealFacts.colors.length && !dealFacts.colors.some((color) => quoteFacts.colors.includes(color))) return -Infinity;
-  if (dealFacts.region && dealFacts.region !== quoteFacts.region) return -Infinity;
-  if (dealFacts.activation && dealFacts.activation !== quoteFacts.activation) return -Infinity;
-  if (dealFacts.condition && dealFacts.condition !== quoteFacts.condition) return -Infinity;
-
-  let score = 20;
-  if (dealFacts.model && dealFacts.model === quoteFacts.model) score += 40;
-  if (dealFacts.ram && dealFacts.ram === quoteFacts.ram) score += 15;
-  if (dealFacts.storage && dealFacts.storage === quoteFacts.storage) score += 15;
-  if (dealFacts.colors.length) score += 8;
-  if (dealFacts.region) score += 8;
-  if (dealFacts.activation) score += 8;
-  return score;
-}
-
-function isPlausibleDealPriceV2(value) {
-  return Number(value) >= 100 && Number(value) <= 30000;
-}
-
-function isLikelySpecNumberV2(text, match) {
-  const value = String(match[1]);
-  const index = match.index || 0;
-  const before = text.slice(Math.max(0, index - 8), index);
-  const after = text.slice(index + value.length, index + value.length + 8);
-  if (/\+\s*$/.test(before) || /^\s*(?:G|GB|TB)\b/i.test(after)) return true;
-  if (["128", "256", "512", "1024"].includes(value)) return true;
-  if (/[-/.年]\s*$/.test(before) || /^\s*[-/.月日]/.test(after)) return true;
-  if (/^\s*款/.test(after) && Number(value) >= 2000 && Number(value) <= 2099) return true;
-  return false;
-}
-
-function extractSkuFactsV2(value) {
-  const compact = normalizeForMatchV2(value);
-  const pair = compact.match(/(\d{1,2})\+(?:(64|128|256|512|1024|2048)(?:g|gb)?|(\d+(?:\.\d+)?)t(?:b)?)/i);
-  const storageMatch = compact.match(/(?:^|[^\d])(?:(64|128|256|512|1024|2048)(?:g|gb)|([12](?:\.\d+)?)t(?:b)?)\b/i);
-  const facts = {
-    family: detectProductFamilyV2(compact),
-    model: "",
-    ram: pair ? pair[1] : "",
-    storage: pair
-      ? pair[2] ? `${pair[2]}gb` : `${pair[3]}tb`
-      : storageMatch ? storageMatch[1] ? `${storageMatch[1]}gb` : `${storageMatch[2]}tb` : "",
-    colors: extractColorsV2(compact),
-    region: extractRegionV2(compact),
-    activation: extractActivationV2(compact),
-    condition: extractConditionV2(compact)
-  };
-  const modelText = compact.replace(/\d{1,2}\+(?:(?:64|128|256|512|1024|2048)(?:g|gb)?|\d+(?:\.\d+)?t(?:b)?)/gi, "");
-  const modelPatterns = {
-    iphone: /iphone(\d{1,2}(?:promax|pro|air|e)?)/,
-    ipad: /ipad((?:mini|air|pro)?\d*)/,
-    redmi: /(?:红米|redmi)((?:turbo|note|k|mix)?\d+(?:proplus|promax|pro|max|ultra)?)/,
-    xiaomi: /(?:小米|xiaomi)((?:mix|civi)?\d+(?:promax|pro|max|ultra)?)/,
-    ps5: /(ps5(?:pro|slim)?)/,
-    switch: /(ns2|switch(?:oled|lite)?)/,
-    airpods: /(airpods(?:pro)?\d*)/,
-    osmo: /(osmo(?:pocket|action)?\d+(?:pro)?)/,
-    insta360: /(insta360[a-z]*\d*[a-z]*)/
-  };
-  const pattern = modelPatterns[facts.family];
-  const modelMatch = pattern ? modelText.match(pattern) : null;
-  facts.model = modelMatch ? `${facts.family}:${modelMatch[1] || modelMatch[0]}` : "";
-  return facts;
-}
-
-function extractColorsV2(compact) {
-  const text = compact.replace(/\u7ea2\u7c73|redmi/g, "");
-  const colors = [];
-  const patterns = [
-    ["black", /\u9ed1|black/],
-    ["white", /\u767d|white/],
-    ["blue", /\u84dd|blue/],
-    ["green", /\u7eff|green/],
-    ["purple", /\u7d2b|purple/],
-    ["orange", /\u6a59|orange/],
-    ["gold", /\u91d1\u8272|gold/],
-    ["silver", /\u94f6|silver/],
-    ["red", /\u7ea2\u8272|red/],
-    ["pink", /\u7c89|pink/],
-    ["gray", /\u7070|gray|grey/]
-  ];
-  for (const [name, pattern] of patterns) if (pattern.test(text)) colors.push(name);
-  return colors;
-}
-
-function extractRegionV2(compact) {
-  if (/\u56fd\u884c/.test(compact)) return "cn";
-  if (/\u6e2f\u7248/.test(compact)) return "hk";
-  if (/\u65e5\u7248/.test(compact)) return "jp";
-  if (/\u7f8e\u7248/.test(compact)) return "us";
-  if (/\u6d77\u5916\u7248|\u5916\u7248/.test(compact)) return "overseas";
-  return "";
-}
-
-function extractActivationV2(compact) {
-  if (/\u672a\u6fc0\u6d3b/.test(compact)) return "inactive";
-  if (/\u9884\u6fc0\u6d3b/.test(compact)) return "preactivated";
-  if (/\u5df2\u6fc0\u6d3b|\u6fc0\u6d3b/.test(compact)) return "activated";
-  return "";
-}
-
-function extractConditionV2(compact) {
-  if (/\u4e8c\u624b|\u4f7f\u7528\u8fc7/.test(compact)) return "used";
-  if (/\u5168\u65b0|\u672a\u62c6/.test(compact)) return "new";
-  return "";
-}
-
-function detectProductFamilyV2(compact) {
-  if (/iphone/.test(compact)) return "iphone";
-  if (/ipad/.test(compact)) return "ipad";
-  if (/红米|redmi/.test(compact)) return "redmi";
-  if (/小米|xiaomi/.test(compact)) return "xiaomi";
-  if (/ps5|playstation5/.test(compact)) return "ps5";
-  if (/ns2|switch/.test(compact)) return "switch";
-  if (/airpods/.test(compact)) return "airpods";
-  if (/osmo/.test(compact)) return "osmo";
-  if (/insta360/.test(compact)) return "insta360";
-  if (/一加|oneplus/.test(compact)) return "oneplus";
-  if (/华为|huawei/.test(compact)) return "huawei";
-  if (/荣耀|honor/.test(compact)) return "honor";
-  if (/oppo/.test(compact)) return "oppo";
-  if (/vivo/.test(compact)) return "vivo";
-  return "";
-}
-
-function normalizeForMatchV2(value) {
-  return String(value || "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[^\p{L}\p{N}+]/gu, "");
 }
 
 function isQuoteFresh(quote, now = Date.now()) {

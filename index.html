@@ -62,6 +62,19 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="panel-head"><h2>Grok 商品核验</h2><span id="checksStatus">等待核验记录</span></div>
+        <details>
+          <summary>连接商品核验</summary>
+          <p>填入只读凭证即可连接本站核验结果。凭证仅在本页内存中使用，刷新后需重新填写。</p>
+          <label>MCP 地址 <input id="checksUrl" type="url" placeholder="https://haoyangmao.koocuu.com/api/mcp" autocomplete="off"></label>
+          <label>只读凭证 <input id="checksToken" type="password" autocomplete="off"></label>
+          <button id="checksConnect" type="button">连接</button>
+          <button id="checksDisconnect" type="button">断开并清除凭证</button>
+        </details>
+        <div id="checksList" class="history-list"></div>
+      </section>
+
       <section class="panel source-panel">
         <div class="panel-head">
           <h2>AH &#34892;&#24773;&#28304;</h2>
@@ -106,6 +119,7 @@
       </section>
     </main>
 
+    <script src="lib/deal-engine.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

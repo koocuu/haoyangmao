@@ -1,0 +1,34 @@
+{
+  "localImportWorkspace": "personal",
+  "allowedHosts": ["mcp.example.com"],
+  "allowedOrigins": ["https://haoyangmao.koocuu.com", "http://127.0.0.1:8765", "http://localhost:8765"],
+  "workspaces": {
+    "personal": {
+      "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪"],
+      "families": ["iphone", "ipad", "redmi", "xiaomi", "switch", "ps5", "airpods", "osmo"],
+      "policy": {
+        "minimumProfit": 80,
+        "shippingCost": 20,
+        "platformCost": 0,
+        "riskBuffer": 30,
+        "quoteMaxAgeMinutes": 30,
+        "leadMaxAgeMinutes": 60
+      },
+      "telegramChatEnv": "HYM_TELEGRAM_CHAT_ID"
+    }
+  },
+  "clients": [
+    {
+      "id": "grok",
+      "tokenEnv": "HYM_GROK_TOKEN",
+      "workspace": "personal",
+      "tools": ["get_pending_checks", "submit_lead", "submit_quote", "get_status"]
+    },
+    {
+      "id": "dashboard",
+      "tokenEnv": "HYM_DASHBOARD_TOKEN",
+      "workspace": "personal",
+      "tools": ["get_status"]
+    }
+  ]
+}

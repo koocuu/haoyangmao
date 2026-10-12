@@ -1,7 +1,13 @@
 data/
+.env
+.env.*
+config/remote-mcp.local.json
 docs/
 extension/
-mcp/
+mcp/haoyangmao-mcp.js
+mcp/remote-server.js
+mcp/README.md
+lib/remote-checks.js
 scripts/
 tests/
 automation-server.js

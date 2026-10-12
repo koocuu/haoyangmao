@@ -1,0 +1,437 @@
+{
+  "tools": [
+    {
+      "name": "get_pending_checks",
+      "description": "读取当前凭证授权空间内待核价商品；分页最多 50 条。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "submit_lead",
+      "description": "提交或补充优惠核验。不能设置利润、门槛、通知状态或身份；相同机会不会重复提醒。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "opportunityKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "稳定的商品活动 ID；补充核验时保持不变。"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "sku": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "完整型号、内存/容量、精确颜色、地区、激活/封装状态、套装等；不支持的或不完整规格只会待确认。"
+          },
+          "buyPrice": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 200000
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "excerpt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "format": "date-time"
+              },
+              "validUntil": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "source",
+              "reference",
+              "excerpt",
+              "observedAt",
+              "validUntil"
+            ]
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "finalPrice": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "eligibility": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "stock": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "purchaseRules": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              }
+            },
+            "required": [
+              "finalPrice",
+              "eligibility",
+              "stock",
+              "purchaseRules"
+            ]
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "opportunityKey",
+          "text",
+          "sku",
+          "buyPrice",
+          "evidence",
+          "conditions"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "submit_quote",
+      "description": "针对 checkId 提交单个回收报价及证据。支持结构化价格及可选单行/OCR 文本交叉校验。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "checkId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "sku": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "完整型号、内存/容量、精确颜色、地区、激活/封装状态、套装等；不支持的或不完整规格只会待确认。"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 200000
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "excerpt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "format": "date-time"
+              },
+              "validUntil": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "source",
+              "reference",
+              "excerpt",
+              "observedAt",
+              "validUntil"
+            ]
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "specification": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "acceptance": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "deductions": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              },
+              "settlement": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "verified",
+                      "unknown",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "status",
+                  "detail"
+                ]
+              }
+            },
+            "required": [
+              "specification",
+              "acceptance",
+              "deductions",
+              "settlement"
+            ]
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "checkId",
+          "sku",
+          "price",
+          "evidence",
+          "conditions"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_status",
+      "description": "读取当前核验结果、证据、净利润与通知状态；省略 checkId 时分页列出当前空间记录。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "checkId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

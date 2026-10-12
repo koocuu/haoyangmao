@@ -2,6 +2,8 @@
 
 数码羊毛套利雷达 MVP。
 
+Grok Bot 远程核价接口：`https://haoyangmao.koocuu.com/api/mcp`，运行在现有 Vercel，复用私有 Blob 保存近期核验。[接入步骤、配置和工具 Schema](docs/REMOTE_MCP.md)。本地开发仍可运行 `npm run mcp:remote`；远程只提供四个核价工具。
+
 当前版本包含三部分：
 
 1. 自动化服务：每日完整采集 AH 行情、扫描优惠源并导入线索箱。

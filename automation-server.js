@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 const { parseRecyclerOcrText, parseXiaogeOcrLayout } = require("./lib/quote-ocr-parser");
+const { parseLeadLine, parseQuoteLine, hasLikelyProduct } = require("./lib/remote-text");
 const {
   dedupeQuoteKey,
   enrichQuote,
@@ -115,68 +116,6 @@ function dedupePush(list, item) {
   list.unshift(prepared);
   Object.assign(item, prepared);
   return true;
-}
-
-function parseLeadLine(line, source = "inbox") {
-  const rawText = normalizeText(line.replace(/^#.*$/, ""));
-  if (!rawText || rawText.length < 8) return null;
-  if (!hasLikelyProduct(rawText)) return null;
-
-  return {
-    id: makeId("lead", `${source}:${rawText}`),
-    source,
-    rawText,
-    status: "pending",
-    createdAt: new Date().toISOString(),
-    evidence: null
-  };
-}
-
-function parseQuoteLine(line, fallbackSource = "报价箱") {
-  const rawText = normalizeText(line.replace(/^#.*$/, ""));
-  if (!rawText || rawText.length < 8) return null;
-
-  const priceMatch = rawText.match(/(?:报价|回收|收|¥|￥)?\s*(\d{3,5})(?:\s*元)?\s*$/) || rawText.match(/(?:报价|回收|收|¥|￥)\s*(\d{3,5})/);
-  if (!priceMatch) return null;
-
-  const sourceName = detectQuoteSource(rawText) || fallbackSource;
-  const skuName = rawText
-    .replace(priceMatch[0], " ")
-    .replace(sourceName, " ")
-    .replace(/报价|回收|可收|今天|今日|元/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!skuName || !hasLikelyProduct(skuName)) return null;
-
-  return {
-    id: makeId("quote", `${sourceName}:${skuName}:${priceMatch[1]}:${rawText}`),
-    skuName,
-    sourceType: sourceName.includes("贩子") ? "dealer" : "recycler",
-    sourceName,
-    price: Number(priceMatch[1]),
-    conditionNote: detectCondition(rawText),
-    observedAt: new Date().toISOString(),
-    confidence: sourceName.includes("小鸽") || sourceName.includes("踏浪") ? 0.95 : 0.86,
-    rawText
-  };
-}
-
-function detectQuoteSource(text) {
-  const sources = ["小鸽", "踏浪", "贩子A", "贩子B", "贩子C", "贩子", "闲鱼"];
-  return sources.find((source) => text.includes(source)) || "";
-}
-
-function detectCondition(text) {
-  if (text.includes("全新未拆")) return "全新未拆";
-  if (text.includes("未激活")) return "全新未激活";
-  if (text.includes("全新")) return "全新";
-  if (text.includes("二手")) return "二手";
-  return "";
-}
-
-function hasLikelyProduct(text) {
-  return /iphone|苹果|switch|ps5|airpods|耳机|相机|索尼|佳能|富士|ipad|macbook/i.test(text);
 }
 
 function extractDealLines(html, watcher) {
@@ -1293,8 +1232,14 @@ function serveStatic(req, res) {
   const url = new URL(req.url, `http://${host}:${port}`);
   const pathname = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
   const filePath = path.normalize(path.join(root, pathname));
-
-  if (!filePath.startsWith(root)) {
+  const allowed = ["/index.html", "/app.js", "/styles.css", "/lib/deal-engine.js"].includes(pathname)
+    || /^\/data\/(screenshots|kdocs)\/[a-zA-Z0-9_./-]+\.(png|jpg|jpeg)$/i.test(pathname);
+  let contained = false;
+  try {
+    const relative = path.relative(fs.realpathSync(root), fs.realpathSync(filePath));
+    contained = relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  } catch { /* Missing files are denied by the same static boundary. */ }
+  if (!allowed || !contained) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -1458,6 +1403,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  createServer,
   captureWindow,
   extractDealLines,
   importInbox,

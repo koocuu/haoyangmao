@@ -64,6 +64,8 @@ const context = {
   RegExp,
   Array,
   JSON,
+  URL,
+  location: { protocol: "https:", origin: "https://haoyangmao.koocuu.com" },
   localStorage: {
     getItem(key) {
       return storage.get(key) || null;
@@ -102,7 +104,9 @@ const context = {
 async function main() {
   vm.createContext(context);
   const appPath = path.join(__dirname, "..", "app.js");
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../lib/deal-engine.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(appPath, "utf8"), context, { filename: appPath });
+  assert.strictEqual(elements.get("checksUrl").value, "https://haoyangmao.koocuu.com/api/mcp");
 
   for (let index = 0; index < 5; index += 1) {
     await Promise.resolve();
@@ -110,10 +114,12 @@ async function main() {
 
   assert.strictEqual(context.formatMoney(2020), "\u00a52020");
   assert.strictEqual(context.buildVerdict(160).label, "\u53ef\u51b2");
-  assert.strictEqual(context.parseDealV2("\u7ea2\u7c73 Turbo4pro 15+512").price, 0);
-  assert.strictEqual(context.parseDealV2("PDD iPhone 16 256G \u5238\u540e 5599").price, 5599);
-  assert.strictEqual(context.extractSkuFactsV2("\u7ea2\u7c73 Turbo4pro 16+512").storage, "512gb");
-  assert.strictEqual(context.extractSkuFactsV2("\u7ea2\u7c73 Turbo4pro 16+1TB").storage, "1tb");
+  assert.strictEqual(context.HymDealEngine.parseDealV2("\u7ea2\u7c73 Turbo4pro 15+512").price, 0);
+  assert.strictEqual(context.HymDealEngine.parseDealV2("PDD iPhone 16 256G \u5238\u540e 5599").price, 5599);
+  assert.strictEqual(context.HymDealEngine.extractSkuFactsV2("\u7ea2\u7c73 Turbo4pro 16+512").storage, "512gb");
+  assert.strictEqual(context.HymDealEngine.extractSkuFactsV2("\u7ea2\u7c73 Turbo4pro 16+1TB").storage, "1tb");
+  assert.strictEqual(context.HymDealEngine.extractSkuFactsV2("iPhone 16 256G").storage, "256gb");
+  assert.strictEqual(context.HymDealEngine.calculateNetProfit(5800.10, 5599.05, { shippingCost: 20, platformCost: 0, riskBuffer: 30 }), 151.05);
   const now = Date.now();
   assert.strictEqual(context.isQuoteFresh({ sourceName: "AH\u6536\u8d27\u884c\u60c5\u8868 OCR", observedAt: new Date(now - 25 * 60 * 60 * 1000).toISOString() }, now), true);
   assert.strictEqual(context.isQuoteFresh({ sourceName: "AH\u6536\u8d27\u884c\u60c5\u8868 OCR", observedAt: new Date(now - 27 * 60 * 60 * 1000).toISOString() }, now), false);
@@ -171,7 +177,7 @@ async function main() {
     }
   ]);
   elements.get("dealInput").value = "\u7ea2\u7c73 Turbo4pro 16+512 1688";
-  assert.strictEqual(context.parseDealV2(elements.get("dealInput").value).price, 1688);
+  assert.strictEqual(context.HymDealEngine.parseDealV2(elements.get("dealInput").value).price, 1688);
   assert.strictEqual(context.matchQuotesV2(elements.get("dealInput").value).length, 2);
   context.analyzeDeal();
   assert.strictEqual(elements.get("sellPrice").textContent, "\u00a51860");
