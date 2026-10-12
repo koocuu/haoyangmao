@@ -172,6 +172,13 @@ async function main() {
     value(await call(c, "submit_quote", unknownQuote)); value(await call(a, "get_pending_checks"));
     assert.equal(deliveries, 2);
 
+    // Fresh window for bounded new business regressions; isolated process has
+    // notifications disabled and writes only the shared mock private store.
+    await setClock(now + 60000);
+    const business = await worker(env, false);
+    await require("./cloud-business-regressions")({ call, value, url: business, lead, quote, evidence, conditions, now });
+    assert.equal(deliveries, 2);
+
     await setClock(now + 31 * 60000);
     assert.equal(value(await call(a, "get_status", { checkId: id })).result.status, "pending_confirmation");
     assert.equal(deliveries, 2);

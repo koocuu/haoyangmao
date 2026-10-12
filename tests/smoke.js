@@ -5,6 +5,25 @@ async function main() {
   // Keep the pure profit/SKU engine regressions after retiring manual UI helpers.
   assert.equal(engine.parseDealV2("红米 Turbo4pro 15+512").price, 0);
   assert.equal(engine.parseDealV2("PDD iPhone 16 256G 券后 5599").price, 5599);
+  for (const text of ["实付7461.5", "价格 ¥7461.50", "到手7,461.50", "iPhone 17 Pro 256GB 7461.5"]) assert.equal(engine.parseDealV2(text).price, 7461.5);
+  assert.equal(engine.parseDealV2("券后7461.555").price, 7461.555, "never truncate unsupported precision into an apparently valid price");
+  assert.equal(engine.parseDealV2("iPhone 17 Pro 256GB 2026.10.12").price, 0);
+  const nova = engine.extractSkuFactsV2("华为 nova 15 Pro 12+256 国行 黑色 全新未激活");
+  assert.equal(nova.model, "huawei:nova15pro"); assert.equal(nova.ram, "12"); assert.equal(nova.storage, "256gb");
+  const novaName = "华为 nova 15 Pro 12+256GB 黑色 国行 全新未激活";
+  assert.equal(Number.isFinite(engine.scoreQuoteV2(engine.extractSkuFactsV2(novaName), { skuName: novaName })), true);
+  assert.equal(Number.isFinite(engine.scoreQuoteV2(engine.extractSkuFactsV2(novaName), { skuName: novaName, normalizedSku: novaName })), true);
+  const redmiName = "Redmi K80 12+256GB 黑色 国行 全新未激活";
+  assert.equal(Number.isFinite(engine.scoreQuoteV2(engine.extractSkuFactsV2(redmiName), { skuName: redmiName, normalizedSku: redmiName })), true);
+  assert.equal(Number.isFinite(engine.scoreQuoteV2(engine.extractSkuFactsV2(redmiName), { skuName: redmiName, normalizedSku: redmiName.replace("12+256", "16+256") })), false);
+  assert.equal(engine.extractSkuFactsV2("华为 nova 15 Pro 12+256GB 黑色 国行 全新 激活状态未知").activation, "");
+  const { parseQuoteLine } = require("../lib/remote-text");
+  assert.equal(parseQuoteLine(`${novaName} 回收2320.50`, "AH").price, 2320.5);
+  for (const amount of ["0", "99", "100000", "9".repeat(400), "2320.555"]) assert.equal(parseQuoteLine(`${novaName} 回收${amount}`, "AH"), null);
+  assert.equal(engine.extractSkuFactsV2("Huawei nova 15 12+256 国行 黑色 全新未激活").model, "huawei:nova15");
+  for (const model of ["nova 16", "nova 15 Ultra", "nova 15 Pro Max", "nova 15 Pro Ultra", "nova 1512+256"]) assert.equal(engine.extractSkuFactsV2(`华为 ${model} 国行 黑色 全新未激活`).model, "");
+  for (const variant of ["华为 nova 15 12+256 国行 黑色 全新未激活", "华为 nova 15 Pro 16+256 国行 黑色 全新未激活", "华为 nova 15 Pro 12+512 国行 黑色 全新未激活", "华为 nova 15 Pro 12+256 国行 白色 全新未激活"]) assert.equal(Number.isFinite(engine.scoreQuoteV2(nova, { skuName: variant })), false);
+  assert.equal(engine.extractSkuFactsV2("华为 nova 15 Pro 12+2560 国行 黑色 全新未激活").ram, "");
   assert.equal(engine.extractSkuFactsV2("红米 Turbo4pro 16+512").storage, "512gb");
   assert.equal(engine.extractSkuFactsV2("红米 Turbo4pro 16+1TB").storage, "1tb");
   assert.equal(engine.extractSkuFactsV2("iPhone 16 256G").storage, "256gb");

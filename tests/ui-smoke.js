@@ -76,6 +76,8 @@ function fixtures(now = Date.now()) {
 async function main() {
   const records = fixtures(), h = harness(records), e = h.elements;
   try {
+    h.context.huaweiFixture = { lead: { sku: "华为 nova 15 Pro 12+256 国行 黑色 全新未激活" } };
+    assert.equal(h.run("categoryOf(huaweiFixture)"), "phone", "existing Huawei UI classification needs no production change");
     assert.equal(h.calls.length, 0, "disconnected page must not call old/public APIs");
     assert.equal(e.get("checksUrl").value, "https://haoyangmao.koocuu.com/api/mcp");
     assert.equal(e.get("checksList").children.length, 0, "no automatic example data");

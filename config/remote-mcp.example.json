@@ -4,8 +4,8 @@
   "allowedOrigins": ["https://haoyangmao.koocuu.com", "http://127.0.0.1:8765", "http://localhost:8765"],
   "workspaces": {
     "personal": {
-      "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪"],
-      "families": ["iphone", "ipad", "redmi", "xiaomi", "switch", "ps5", "airpods", "osmo"],
+      "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪", "什么值得买", "小红书", "微信群"],
+      "families": ["iphone", "ipad", "redmi", "xiaomi", "huawei", "switch", "ps5", "airpods", "osmo"],
       "policy": {
         "minimumProfit": 80,
         "shippingCost": 20,
