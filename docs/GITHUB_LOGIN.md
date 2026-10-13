@@ -38,7 +38,7 @@ OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Privat
 
 2026-10-13 本地验收：负责人独立运行 `npm test`（十组）、`npm run test:remote`、`npm run test:auth` 和 `git diff --check` 均通过。隔离测试覆盖跨实例 nonce 单次消费、会话轮换/撤销、登出与兑换并发、未知写入结果、CSRF、只读看板、Grok 权限隔离和共同请求截止时间。320px 浏览器页面已用本地模拟会话检查布局与登录/退出展示；这不是实际 GitHub 登录验收。
 
-当前发布阻碍：专用 OAuth App 已创建，生成 Client Secret 停在 GitHub 本人 Confirm access；尚未取得或配置生产 OAuth 密钥，未启用生产登录。真实 GitHub 往返、云端会话撤销及手机登录尚待完成，手动回退继续保留。
+2026-10-13 发布准备：专用 OAuth App 已创建，Ray 已完成 GitHub 本人 Confirm access；Production 的三项凭据已通过内存及 Vercel CLI 标准输入配置为 Secret，无本机秘密文件。登录开关及手动回退均设为 `1`，新部署生效。真实 GitHub 往返、云端会话撤销及手机登录须在发布后另行验收，不能以本地测试替代。
 
 1. `npm test`、`npm run test:remote`、`npm run test:auth`；本地隔离测试不能充当真实 GitHub 登录证明。
 2. Production READY 且 SHA 与发布提交一致；匿名 dashboard 401，session 不泄露私有记录，伪造/重复回调不得签发会话。
