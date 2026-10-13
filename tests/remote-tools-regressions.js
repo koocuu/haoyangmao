@@ -64,6 +64,23 @@ module.exports = async function run() {
     for (const field of ["singleColor", "region", "activation"]) assert.ok(incomplete.diagnostics.missingSpecs.includes(field));
     assert.ok(incomplete.diagnostics.quotes[0].differences.includes("model")); assert.ok(incomplete.diagnostics.quotes[0].differences.includes("storage"));
     assert.equal(incomplete.result.status, "pending_confirmation");
+    // Even identical lead/quote text cannot certify a contradictory SKU.
+    for (const [candidate, field] of [
+      [sku.replace("256GB", "256GB 512GB"), "storage"],
+      [sku.replace("国行", "国行 港版"), "region"],
+      [sku.replace("全新", "全新 二手"), "condition"]
+    ]) {
+      const result = await call("preview_check", { ...lead("ambiguous", { sku: candidate, text: `${candidate} 实付7000` }), quotes: [quote("ambiguous-q", { sku: candidate, text: `${candidate} 回收7400` })] });
+      assert.equal(result.result.status, "pending_confirmation"); assert.equal(result.result.netProfit, null);
+      assert.ok(result.diagnostics.missingSpecs.includes(field));
+    }
+    const unknownPurchase = lead("unknown-profit"); unknownPurchase.conditions.stock.status = "unknown";
+    const unknownProfit = await call("preview_check", { ...unknownPurchase, quotes: [quote("known-quote")] });
+    assert.equal(unknownProfit.result.status, "pending_confirmation"); assert.equal(unknownProfit.result.netProfit, null);
+    assert.equal(unknownProfit.result.sellPrice, 7400, "keep source price as evidence, not verified profit");
+    const expiredBuy = lead("expired-profit"); expiredBuy.evidence.observedAt = new Date(now - 61 * 60000).toISOString();
+    const expiredProfit = await call("preview_check", { ...expiredBuy, quotes: [quote("fresh-quote")] });
+    assert.equal(expiredProfit.result.netProfit, null); assert.ok(expiredProfit.result.reasons.includes("购买线索过期"));
     await assert.rejects(call("preview_check", pArgs, reader), /Tool not authorized/);
     await assert.rejects(call("preview_check", { ...pArgs, quotes: Array(11).fill(quote("bound")) }), /Invalid arguments.quotes/);
     Object.assign(service, original);

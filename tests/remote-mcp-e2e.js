@@ -91,7 +91,7 @@ async function main() {
     assert.equal((await call("get_status", { checkId: id }, outsider)).isError, true);
     assert.equal((await call("submit_quote", quote(id, "cross"), outsider)).isError, true);
     record = value(await call("submit_quote", quote(id, "quote-1", { text: `${sku} 回收 5800` })));
-    assert.equal(record.result.netProfit, 151);
+    assert.equal(record.result.netProfit, null);
     assert.equal(record.result.status, "pending_confirmation"); assert.equal(sent.length, 0);
     const completed = { ...pending, idempotencyKey: "main-verified", conditions: conditions(["finalPrice", "eligibility", "stock", "purchaseRules"]) };
     const parallel = await Promise.all(Array.from({ length: 8 }, () => call("submit_lead", completed)));

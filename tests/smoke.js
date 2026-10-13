@@ -27,6 +27,11 @@ async function main() {
   assert.equal(engine.extractSkuFactsV2("红米 Turbo4pro 16+512").storage, "512gb");
   assert.equal(engine.extractSkuFactsV2("红米 Turbo4pro 16+1TB").storage, "1tb");
   assert.equal(engine.extractSkuFactsV2("iPhone 16 256G").storage, "256gb");
+  assert.equal(engine.extractSkuFactsV2("iPhone 16 256G 256GB").storage, "256gb", "repeated same capacity remains valid");
+  assert.equal(engine.extractSkuFactsV2("华为 nova 15 Pro 12+256 512GB").storage, "", "pair and explicit conflicting capacity are ambiguous");
+  assert.equal(engine.extractSkuFactsV2("iPhone 16 256G 512GB").storage, "");
+  assert.equal(engine.extractSkuFactsV2("iPhone 16 256G 国行 港版").region, "");
+  assert.equal(engine.extractSkuFactsV2("iPhone 16 256G 全新 二手").condition, "");
   const costs = { shippingCost: 20, platformCost: 0, riskBuffer: 30 };
   assert.equal(engine.calculateNetProfit(5800.10, 5599.05, costs), 151.05);
   const facts = engine.extractSkuFactsV2("红米 Turbo4pro 16+512 券后 1500");

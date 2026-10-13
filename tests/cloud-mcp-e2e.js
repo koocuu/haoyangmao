@@ -109,6 +109,7 @@ async function main() {
     assert.deepEqual({ reads, writes }, beforeAuth, "Bearer/Host/Origin/protocol failures never access storage");
     const cors = await rpc(a, "ping", {}, reader, { Origin: config.allowedOrigins[0] });
     assert.equal(cors.headers.get("access-control-allow-origin"), config.allowedOrigins[0]);
+    assert.equal(cors.headers.get("access-control-expose-headers"), "Retry-After");
     assert.equal(cors.headers.get("cache-control"), "no-store");
     const beforeScopes = { reads, writes };
     assert.equal((await call(a, "submit_lead", lead("reader"), reader)).body.result.isError, true);
@@ -119,12 +120,21 @@ async function main() {
     assert.equal((await call(a, "get_status", { limit: 51 })).body.result.isError, true);
     assert.equal((await rpc(a, "ping", { blob: "x".repeat(33000) })).status, 413);
 
+    const beforeRead = writes;
+    assert.equal(value(await call(a, "get_status", {}, reader)).total, 0);
+    assert.equal(writes - beforeRead, 2, "unchanged status read writes only admission/release, preserving distributed limits");
+    state.checks.push({ id: "stale-cleanup-fixture", workspace: "personal", updatedAt: new Date(now - 8 * 86400000).toISOString(), quotes: [] }); revision++;
+    const beforeCleanup = writes;
+    assert.equal(value(await call(a, "get_status", {}, reader)).total, 0);
+    assert.equal(writes - beforeCleanup, 3, "retention cleanup still persists with conditional CAS");
+    assert.equal(state.checks.length, 0);
+
     const pending = lead("main"); pending.conditions.eligibility.status = "unknown";
     const first = value(await call(a, "submit_lead", pending));
     const id = first.id;
     assert.equal(first.result.status, "pending_confirmation");
     const quoted = value(await call(b, "submit_quote", quote(id, "main-q")));
-    assert.equal(quoted.result.netProfit, 151); assert.equal(quoted.result.status, "pending_confirmation"); assert.equal(deliveries, 0);
+    assert.equal(quoted.result.netProfit, null); assert.equal(quoted.result.status, "pending_confirmation"); assert.equal(deliveries, 0);
     const completed = { ...pending, idempotencyKey: "verified", conditions: conditions(["finalPrice", "eligibility", "stock", "purchaseRules"]) };
     const raced = await Promise.all([call(a, "submit_lead", completed), call(b, "submit_lead", completed), call(c, "submit_lead", completed)]);
     raced.forEach(value);
@@ -304,6 +314,11 @@ async function boundedTransactions() {
     async put() { attempts++; throw mode === "unknown" ? new sdkTypes.BlobUnknownError() : new sdkTypes.BlobPreconditionFailedError(); }
   };
   const store = new BlobStore({ token: "fixture", sdk });
+  assert.equal(await store.transaction(() => "read-only", undefined, { skipUnchanged: true }), "read-only");
+  assert.equal(attempts, 0, "unchanged read snapshot does not write business state");
+  await assert.rejects(store.transaction(data => { data.checks.push({ id: "cleanup-change-fixture" }); }, undefined, { skipUnchanged: true }), Unavailable);
+  assert.equal(attempts, 1, "changed reads still require acknowledged CAS and never retry unknown writes");
+  attempts = 0;
   await assert.rejects(store.transaction(() => {}), Unavailable);
   assert.equal(attempts, 1, "unknown outcomes cannot retry whole business transactions");
   mode = "conflict"; attempts = 0;

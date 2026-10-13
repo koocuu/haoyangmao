@@ -192,7 +192,7 @@ Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；�
 
 有效报价按同一来源/规格取最近核验，再从有效且已核实的匹配报价取最低价。其他来源旧 AH 行情不会自动当作 Bot 已核实的回收保证。结构化 `price` 是净回收额，购买实付含购买端费用；配置中的运费是额外寄出成本，避免重复扣费。
 
-在 `HYM_MCP_CONFIG_JSON`（本地为 `config/remote-mcp.local.json`）各 workspace 的 `policy` 中配置 `minimumProfit`、`shippingCost`、`platformCost`、`riskBuffer` 及购买/报价有效分钟数，重新部署/重启后生效。默认 80 / 20 / 0 / 30 元，购买 60 分钟、报价 30 分钟。条件缺失、失败、价格文本冲突、旧报价均返回 `pending_confirmation`；完整但未过门槛为 `below_threshold`。
+在 `HYM_MCP_CONFIG_JSON`（本地为 `config/remote-mcp.local.json`）各 workspace 的 `policy` 中配置 `minimumProfit`、`shippingCost`、`platformCost`、`riskBuffer` 及购买/报价有效分钟数，重新部署/重启后生效。默认 80 / 20 / 0 / 30 元，购买 60 分钟、报价 30 分钟。条件缺失、失败、价格文本冲突、旧报价均返回 `pending_confirmation`，此时 `netProfit` 为 null，来源价格仍可作为证据查看；完整但未过门槛为 `below_threshold`。同一 SKU 同时含冲突容量、地区或成色时保持待确认，不能靠购买和回收两边复制同一段矛盾文字通过核验；重复同一规格不算冲突。
 
 提醒使用 Telegram 固定 API（`api.telegram.org`，禁重定向、10 秒超时、限制响应体）。配置 `HYM_TELEGRAM_BOT_TOKEN` 及 workspace 的 `telegramChatEnv` 所指定的目标 ID。未配置时保存 `not_configured`，网页仍可看；配置并重新部署后，后续提交或幂等回放只会提醒该条**当时仍有效**的机会。只读查询不触发提醒。Vercel 不依赖常驻进程或后台定时器。测试注入模拟通知器，不发送真实消息。
 
@@ -203,6 +203,7 @@ Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；�
 - 私有 Blob 保存最近 7 天的核验、来源、证据、报价、最多 10 次线索旧版本、幂等收据及通知状态；去重通知摘要保存 30 天。本地开发保存到 `data/private/remote-checks.json`。
 - 最多 200 个近期机会、每机会 20 条报价、5000 条幂等收据、10000 条通知摘要。达到上限拒绝新写入，不提前清空幂等或通知保护。云端在请求中清理过期数据；过期读取实时计算。
 - 云端使用 Blob ETag 条件写入，首次创建禁止覆盖，读取不使用缓存；跨实例冲突有界重试，提交结果不确定时不发送通知。文件损坏或存储失败时拒绝处理，不能静默清空重建。本地使用进程锁和原子文件替换；仅本地崩溃遗留锁需要人工确认旧进程已停止后清理。
+- `get_status/get_pending_checks` 在业务状态未变化且无保留期清理时跳过业务 CAS 写回，正常请求只保留 admission/release 两次写入；需要清理时仍条件写入，未知写入结果仍不重试。网页成功同步仍每30秒读取；失败按30/60/120/240/300秒退避，429/503 的 Retry-After 可延长等待（最多1小时）。隐藏页不轮询，切回前台和手动刷新不能绕过当前退避；成功同步后恢复正常间隔。
 - 跨实例限速与并发占位也写入私有 Blob，因此一次持久化 MCP 请求会使用数次 Blob 操作。纯预览例外：32KiB 请求、最多10报价、响应大小上限保持，使用每个 warm serverless handler 实例的进程内限速（每凭证120/分钟、总600/分钟）；同步有界计算不排无界队列。它不是跨实例总限额，冷启动/多个实例各自计数；不为预览新增数据库、队列或云端写入。本地服务沿用120/600限速和20请求有界串行队列。Hobby 配额需在 Storage/Usage 监控；网页仅连接且可见时轮询，不自动升级套餐。
 - token 固定映射 workspace 与工具权限；不信任请求传入身份。`get_status`、单条/批量报价、作废都按 workspace 校验 checkId；预览只能用本凭证 workspace 策略。来源与商品品类由配置白名单限制。
 - 仅本地开启 `localImportWorkspace` 时，现有 `data/state.json` 中最近 7 天且品类获准的线索成为该空间待办；云端由 Bot 提交线索，不访问本机文件。

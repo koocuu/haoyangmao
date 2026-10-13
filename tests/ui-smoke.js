@@ -132,6 +132,20 @@ async function main() {
   // Empty/error/loading states are real; auth responses and provider text are not echoed.
   const empty = harness([]); await empty.connect(); assert.equal(empty.elements.get("stateTitle").textContent, "暂时没有商品机会"); empty.cleanup();
   const failed = harness([], () => ({ ok: false, json: async () => ({ secret: "never echo" }) })); await failed.connect(); assert.equal(failed.run("pageState.phase"), "error"); assert.doesNotMatch(failed.elements.get("listState").textContent, /never echo/); failed.cleanup();
+  const retry = harness([], () => ({ ok: false, status: 503 }));
+  await retry.connect();
+  for (const delay of [30000, 60000, 120000, 240000, 300000]) {
+    assert.equal([...retry.timers.values()][0].delay, delay);
+    const before = retry.calls.length; await retry.run("refreshChecks()"); assert.equal(retry.calls.length, before);
+    await retry.advance(delay);
+  }
+  retry.context.fetch = async () => response({ protocolVersion: "2025-11-25", structuredContent: { items: [], total: 0, nextOffset: null } });
+  await retry.advance(300000); assert.equal(retry.run("pageState.phase"), "ready"); assert.equal([...retry.timers.values()][0].delay, 30000); retry.cleanup();
+  const limited = harness([], () => ({ ok: false, status: 429, headers: { get: () => "90" } }));
+  await limited.connect(); assert.equal([...limited.timers.values()][0].delay, 90000);
+  const requests = limited.calls.length; await limited.visibility(true); await limited.visibility(false); await limited.run("refreshChecks()");
+  assert.equal(limited.calls.length, requests, "hidden/visible and manual refresh cannot bypass Retry-After");
+  await limited.advance(90000); assert.equal(limited.calls.length, requests + 1); limited.cleanup();
   let resolveOld;
   const delayed = harness([], () => new Promise(resolve => { resolveOld = resolve; }));
   delayed.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); const pendingRequest = delayed.run("connectChecks()");

@@ -174,7 +174,7 @@ function scheduleExpiry() {
 }
 function schedulePoll() {
   clearTimeout(pageState.pollTimer); pageState.pollTimer = null;
-  if (pageState.connection && !document.hidden) pageState.pollTimer = setTimeout(refreshChecks, 30000);
+  if (pageState.connection && !document.hidden) pageState.pollTimer = setTimeout(refreshChecks, Math.max(30000, (pageState.connection.retryNotBefore || 0) - Date.now()));
 }
 function disconnectChecks() {
   const old = pageState.connection; pageState.connection = null; old?.controller?.abort(); if (old) old.token = "";
@@ -202,7 +202,15 @@ async function requestRpc(connection, method, params, id, controller) {
   const message = { jsonrpc: "2.0", method }; if (params !== undefined) message.params = params; if (id !== undefined) message.id = id;
   const response = await fetch(connection.url, { method: "POST", redirect: "error", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), headers, body: JSON.stringify(message) });
   assertCurrent(connection, controller.signal);
-  if (!response.ok) throw new Error("无法读取接口，请检查地址、只读凭证及服务状态。");
+  if (!response.ok) {
+    const error = new Error("无法读取接口，请检查地址、只读凭证及服务状态。");
+    if ([429, 503].includes(response.status)) {
+      const value = response.headers?.get("Retry-After") || "";
+      const delay = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - Date.now();
+      if (Number.isFinite(delay) && delay > 0) error.retryDelay = Math.min(3600000, delay);
+    }
+    throw error;
+  }
   if (id === undefined) return null;
   const data = await response.json(); assertCurrent(connection, controller.signal);
   if (data.error || !data.result || data.result.isError) throw new Error("核验读取失败，请检查只读权限及服务状态。");
@@ -211,6 +219,8 @@ async function requestRpc(connection, method, params, id, controller) {
 async function refreshChecks() {
   const connection = pageState.connection;
   if (!connection || connection.loading || document.hidden) return;
+  // Visibility changes and manual clicks must also respect a server cooldown.
+  if (Date.now() < (connection.retryNotBefore || 0)) { schedulePoll(); return; }
   clearTimeout(pageState.pollTimer); connection.loading = true; pageState.phase = "loading"; pageState.error = ""; render();
   const controller = new AbortController(); connection.controller = controller;
   try {
@@ -234,11 +244,18 @@ async function refreshChecks() {
       offset = result.nextOffset;
     }
     assertCurrent(connection, controller.signal);
+    connection.failures = 0; connection.retryNotBefore = 0;
     pageState.items = items; pageState.phase = "ready"; pageState.syncedAt = new Date().toISOString(); pageState.error = "";
   } catch (error) {
     if (connection !== pageState.connection) return;
     if (controller.signal.aborted || document.hidden) { pageState.phase = pageState.syncedAt ? "ready" : "paused"; }
-    else { pageState.items = []; pageState.selectedId = null; pageState.detailOpen = false; pageState.phase = "error"; pageState.error = "读取失败，请检查设置中的地址、只读凭证及服务状态后重试。"; }
+    else {
+      connection.failures = Math.min(5, (connection.failures || 0) + 1);
+      const delay = Math.max(Math.min(300000, 30000 * 2 ** (connection.failures - 1)), error.retryDelay || 0);
+      connection.retryNotBefore = Date.now() + delay;
+      pageState.items = []; pageState.selectedId = null; pageState.detailOpen = false; pageState.phase = "error";
+      pageState.error = `读取失败，约 ${Math.ceil(delay / 1000)} 秒后自动重试；可在设置中检查地址或重新连接。`;
+    }
   } finally {
     connection.loading = false; connection.controller = null;
     if (connection === pageState.connection) { render(); schedulePoll(); }
