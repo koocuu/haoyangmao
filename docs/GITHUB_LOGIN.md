@@ -42,6 +42,8 @@ OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Privat
 
 2026-10-13 发布准备：专用 OAuth App 已创建，Ray 已完成 GitHub 本人 Confirm access；Production 的三项凭据已通过内存及 Vercel CLI 标准输入配置为 Secret，无本机秘密文件。登录开关及手动回退均设为 `1`，新部署生效。真实 GitHub 往返、云端会话撤销及手机登录须在发布后另行验收，不能以本地测试替代。
 
+2026-10-13 Production 实测：路由修正提交 `d505c685717619828d3ef12838ac389c8524ebda` 达到 READY；koocuu 完成真实 GitHub 授权（仅 Public data），会话和只读看板返回 200，读取 4 条现有记录，网页自动显示 4 条；刷新保留会话。错误 CSRF 返回 403；点击退出返回 204，随后 session 显示未登录、dashboard 返回 401、页面清空。运行日志抽查 22 条均为 info，未见 OAuth 查询值或秘密赋值；Drains API 返回 404，不能声称已核实无外部日志转发。没有新增模拟商品或发送通知。手机真实登录仍待 Ray 确认，因此保留手动回退。
+
 1. `npm test`、`npm run test:remote`、`npm run test:auth`；本地隔离测试不能充当真实 GitHub 登录证明。
 2. Production READY 且 SHA 与发布提交一致；匿名 dashboard 401，session 不泄露私有记录，伪造/重复回调不得签发会话。
 3. koocuu 从未登录页面完成真实 GitHub 往返，自动读到列表；刷新保持登录，退出后 API 401，再次登录可用。没有记录时明确空态。
