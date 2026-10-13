@@ -190,6 +190,8 @@ Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；�
 
 旧身份规范化函数与已存 identity 不改写。服务端在本 workspace 有界扫描近期记录，以原 source/reference/完整 SKU 和明确别名作兼容比较；近期记录清理后，对30天旧通知摘要仍使用有限旧别名 hash 候选保护去重，新通知同时保留规范身份摘要。不能用别名换 key 绕过旧通知，也不会批量迁移生产状态。
 
+等价提交若曾使用不同 `opportunityKey`，物理 checkId 仍可保持原值；服务端同样绑定当前及保留在 `leadHistory` 的活动 key。换一个新的 `idempotencyKey` 不能让这些 key 改用其他 source/reference/完整 SKU。历史 key 的保护沿用近期记录与最多10个旧版本的保留边界，不增加永久审计或批量重写。
+
 有效报价按同一来源/规格取最近核验，再从有效且已核实的匹配报价取最低价。其他来源旧 AH 行情不会自动当作 Bot 已核实的回收保证。结构化 `price` 是净回收额，购买实付含购买端费用；配置中的运费是额外寄出成本，避免重复扣费。
 
 在 `HYM_MCP_CONFIG_JSON`（本地为 `config/remote-mcp.local.json`）各 workspace 的 `policy` 中配置 `minimumProfit`、`shippingCost`、`platformCost`、`riskBuffer` 及购买/报价有效分钟数，重新部署/重启后生效。默认 80 / 20 / 0 / 30 元，购买 60 分钟、报价 30 分钟。条件缺失、失败、价格文本冲突、旧报价均返回 `pending_confirmation`，此时 `netProfit` 为 null，来源价格仍可作为证据查看；完整但未过门槛为 `below_threshold`。同一 SKU 同时含冲突容量、地区或成色时保持待确认，不能靠购买和回收两边复制同一段矛盾文字通过核验；重复同一规格不算冲突。

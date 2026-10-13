@@ -1,4 +1,6 @@
-# Vercel 部署
+# AH 快照兼容部署（Vercel）
+
+本页说明原 AH 公开快照接口与本机采集器，供保留脚本使用。当前首页只读展示 Grok 提交的私有 MCP 核验记录；新增环境配置及验收请看 [远程 MCP 文档](REMOTE_MCP.md)。不要将下方 Public Blob 与 MCP 的独立 Private Blob 混用。
 
 ## 架构
 
@@ -15,10 +17,10 @@ Vercel /api/automation/snapshot
 Vercel Blob: haoyangmao/latest-state.json
             |
             v
-Vercel 网页读取报价并分析利润
+公开 AH 兼容 API（已有脚本读取）
 ```
 
-Vercel 不负责打开 KDocs、截图或 OCR。部署后网页中的本机采集按钮会自动隐藏。
+Vercel 不负责打开 KDocs、截图或 OCR。当前首页已移除本机采集及手动分析入口，AH 快照不会自动成为已核实的商品机会。
 
 ## 1. 部署项目
 
@@ -84,11 +86,11 @@ https://haoyangmao.koocuu.com/api/automation/state
 }
 ```
 
-首页应显示 `AH 云端快照`，并且不显示“打开授权浏览器”和“采集一次”。
+以两个兼容 API 的响应验收 AH 快照。当前首页不展示旧 `AH 云端快照` 面板，也不提供“打开授权浏览器”或“采集一次”；首页验收须通过私有 MCP 的只读连接，不能用公开 AH 行情代替真实核验。
 
 ## 安全边界
 
-- 云端只保存清洗后的 AH 报价。
+- 此公开快照链路只保存清洗后的 AH 报价；Grok 核验记录只进入独立 Private Blob。
 - 本机线索、最近分析、截图、WPS 登录态和 Chrome Profile 不会上传。
 - 上传接口只接受正确的 `HYM_SYNC_TOKEN`。
 - Blob 中不保存同步密钥。

@@ -154,6 +154,27 @@ module.exports = async function run() {
     const aliasSku = sku.replace("银色", "深蓝").replace("Pro Max", "PM");
     const aliased = await call("submit_lead", lead("alias-new", { sku: aliasSku, text: `${aliasSku} 实付7000`, evidence: evidence("酷安", "stable-ref") }));
     assert.equal(aliased.id, old.id); assert.equal(aliased.identity, legacyKey);
+    const aliasUpdate = lead("alias-new", { sku: aliasSku, text: `${aliasSku} 实付7000`, evidence: evidence("酷安", "stable-ref") });
+    const beforeKeyConflicts = JSON.stringify(service.data);
+    for (const [label, overrides] of [
+      ["source", { evidence: evidence("AH", "stable-ref") }],
+      ["reference", { evidence: evidence("酷安", "other-ref") }],
+      ["sku", { sku: aliasSku.replace("256GB", "512GB"), text: `${aliasSku.replace("256GB", "512GB")} 实付7000` }]
+    ]) await assert.rejects(call("submit_lead", { ...aliasUpdate, ...overrides, idempotencyKey: `reused-alias-${label}` }), /Opportunity identity cannot change/);
+    assert.equal(JSON.stringify(service.data), beforeKeyConflicts, "rejected reuse leaves no record/revision/receipt");
+    const nextAlias = await call("submit_lead", { ...aliasUpdate, opportunityKey: "alias-third", idempotencyKey: "alias-third" });
+    assert.equal(nextAlias.id, old.id); assert.equal(nextAlias.identity, legacyKey);
+    await assert.rejects(call("submit_lead", { ...aliasUpdate, idempotencyKey: "historical-alias-conflict", evidence: evidence("酷安", "changed-historical-ref") }), /Opportunity identity cannot change/);
+    // Pre-fix state might already contain two conflicting bindings. Preserve
+    // both records and refuse writes, regardless of their physical list order.
+    const legacyDuplicate = structuredClone(service.find(principal, old.id));
+    legacyDuplicate.id = "fixture-legacy-duplicate"; legacyDuplicate.identity = "fixture-conflicting-identity";
+    legacyDuplicate.lead.evidence.source = "AH";
+    service.data.checks.push(legacyDuplicate);
+    const beforeDuplicate = JSON.stringify(service.data);
+    await assert.rejects(call("submit_lead", { ...aliasUpdate, opportunityKey: "alias-third", idempotencyKey: "legacy-duplicate-attempt" }), /Opportunity identity cannot change/);
+    assert.equal(JSON.stringify(service.data), beforeDuplicate);
+    service.data.checks.pop();
     await assert.rejects(call("submit_lead", lead("legacy", { idempotencyKey: "bad-identity", evidence: evidence("酷安", "changed-reference") })), /Opportunity identity/);
     const quoteOld = quote("legacy-q", { sku: oldSku, text: `${oldSku} 回收7400` });
     await call("submit_quote", { ...quoteOld, checkId: old.id }); assert.equal(sent.length, 2);
