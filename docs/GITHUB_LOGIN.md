@@ -16,6 +16,8 @@
 
 回调使用固定 `https://haoyangmao.koocuu.com/api/auth/callback`，不从不可信 Host 或 forwarded header 构造。Vercel 自带域名转向正式域名，不为每个随机部署建立登录。Cookie host-only，不共享给其它 koocuu.com 子域。
 
+认证入口采用 `api/auth/session.js`、`login.js`、`callback.js`、`logout.js` 四个固定文件，避免 Vercel 动态路由注入查询参数触发严格参数拒绝。别名跳转按“Host 不等于正式域名”判断，目标始终固定；不使用在本项目首次部署中未匹配的 Host 正则字符串。不为兼容部署而放宽回调参数、Host 或 Origin 校验。
+
 OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Private Blob。拒绝重复参数及错误 state；可选 `iss` 若存在必须精确为 `https://github.com/login/oauth`。固定 GitHub token/user 端点，禁止重定向，有超时及响应体上限。会话为随机 opaque ID，服务端仅存摘要，8 小时到期；新登录轮换当前会话，登出撤销服务端会话。Blob 沿用 identity GET、同响应强 ETag 与 CAS，未知写入结果不自动重试。
 
 ## Production 配置

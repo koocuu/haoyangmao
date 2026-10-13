@@ -7,7 +7,7 @@
     "api/dashboard.js": { "maxDuration": 60 }
   },
   "redirects": [
-    { "source": "/:path*", "has": [{ "type": "host", "value": "haoyangmao(?:-[a-z0-9-]+)?\\.vercel\\.app" }], "destination": "https://haoyangmao.koocuu.com/:path*", "permanent": false }
+    { "source": "/:path*", "missing": [{ "type": "host", "value": "haoyangmao.koocuu.com" }], "destination": "https://haoyangmao.koocuu.com/:path*", "permanent": false }
   ],
   "headers": [
     {
