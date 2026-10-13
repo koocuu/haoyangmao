@@ -5,7 +5,7 @@
   "workspaces": {
     "personal": {
       "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪", "什么值得买", "小红书", "微信群", "酷安"],
-      "families": ["iphone", "ipad", "redmi", "xiaomi", "huawei", "switch", "ps5", "airpods", "osmo"],
+      "families": ["iphone", "ipad", "redmi", "xiaomi", "huawei", "oppo", "oneplus", "vivo", "samsung", "mac", "honor", "realme", "switch", "ps5", "airpods", "osmo"],
       "policy": {
         "minimumProfit": 80,
         "shippingCost": 20,

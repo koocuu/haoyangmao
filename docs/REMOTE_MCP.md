@@ -89,6 +89,28 @@ Blob 与 Functions 使用同一区域 `iad1`。私有存储为 `haoyangmao-mcp-p
 
 ### 来源、SKU 与新鲜度的提交约定
 
+#### 产品族白名单与未知规格
+
+当前样例及本轮 Production 发布使用下列 16 个产品族（精确授权值，不是 SKU 文本必须照写的品牌名）：
+
+| 授权值 | 可提交范围 |
+| --- | --- |
+| `iphone` / `ipad` | iPhone / iPad |
+| `redmi` / `xiaomi` | 红米 / 小米（含小米平板、Xiaomi Pad） |
+| `huawei` / `honor` | 华为 / 荣耀、Honor |
+| `oppo` / `oneplus` | OPPO（含 Find、Reno）/ 一加、OnePlus（含 Ace） |
+| `vivo` | vivo（含 iQOO） |
+| `samsung` | 三星、Samsung（Galaxy S/Z/A） |
+| `mac` | Apple Mac mini、MacBook Air、MacBook Pro |
+| `realme` | realme、真我 |
+| `switch` / `ps5` / `airpods` / `osmo` | Switch / PS5 / AirPods / Osmo |
+
+不在白名单中的产品族仍拒绝；例如 `insta360` 虽有旧解析能力，本轮没有授权。授权只表示允许接收线索，不等于已经支持该品牌全部型号自动核实。新系列、未知后缀或不完整 SKU 可以保存为 `pending_confirmation`，不显示有效净利润，也不触发可下单提醒。
+
+`sku` 继续是一个字符串，**不要新增 `brand/model/ram/chip` 等顶层 JSON 参数**。写明品牌、完整型号、RAM/存储容量、精确颜色、地区、成色和激活状态；Mac 另外写芯片及统一内存，并区分内存与 SSD 容量。未知项写成 `颜色 unknown`、`地区 unknown`、`激活 unknown`、`芯片 unknown`、`统一内存 unknown` 等，不猜测默认值。iPhone 保留既有不要求补造 RAM 的规则；iPad 与安卓平板同样检查内存、颜色和激活等字段。品牌也无法识别时不能确定授权产品族，仍会拒绝。
+
+格式示例（仅示例，不是已核实商品）：`OPPO Find X8 Pro 12+256GB 黑色 国行 全新未激活`；Mac 可写 `Apple Mac mini M4 统一内存16GB SSD256GB 银色 国行 全新未激活`。MacBook 及以 M 系列芯片标识的 iPad Air/Pro 还须明确屏幕尺寸，例如 `13英寸`；缺失时返回 `screenSize`，避免不同尺寸混价。购买文本 `text` 须原样包含完整 `sku` 和实付价格；未知字段不能通过在购买和报价两边复制同样的 `unknown` 获得通过。先用 `preview_check` 看 `diagnostics.missingSpecs` 与逐报价 `differences`，补齐 SKU 后按下面的身份规则使用新机会键。
+
 - 直接看到什么值得买爆料就使用 `source: "什么值得买"`；直接核实小红书原文就使用 `source: "小红书"`。仅看到微信群转述时使用 `source: "微信群"`，`reference` 可包含脱敏群标识、消息编号/时间和真实小红书原文链接，例如 `群代号/消息编号；原文 https://www.xiaohongshu.com/<真实引用>`。链接只是引用文本，不会由服务端抓取。
 - 群消息自称「AH 报价」不等于已亲自核实 AH。未直接确认 AH 的报价、规格、扣费与结算条件时，不能借 `source: "AH"` 绕过来源授权，也不能把转述条件填成 `verified`。来源白名单是权限边界，不是对证据真实性的背书。
 - 「踏浪」「小鸽」都是微信小程序。只有 Bot 亲自打开对应小程序，直接看到并核实报价、完整规格与回收条件后，`submit_quote` 的 `evidence.source` 才能使用中文原名 `"踏浪"` 或 `"小鸽"`；不使用英文别名。群里转述的小程序报价仍使用 `"微信群"`，未亲自核实的条件保持 `unknown`。
@@ -184,7 +206,7 @@ Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；�
 
 ## 匹配、利润与提醒
 
-前后端复用 `lib/deal-engine.js`；单行/OCR 文本复用现有解析器。SKU 模糊识别仅用于候选，自动提醒额外要求规范化完整 SKU 一致，避免把近似颜色、容量、激活、套装当成同款。文字别名或不支持的型号可能保守地留待确认。手机必须含容量、单一颜色、地区、激活、成色；安卓手机另要求 RAM，iPhone 无需补造 RAM。平板要求容量/地区；主机要求地区；所有产品要求可识别的型号与成色。未能识别的型号不会自动放行。
+前后端复用 `lib/deal-engine.js`；单行/OCR 文本复用现有解析器。SKU 模糊识别仅用于候选，自动提醒额外要求规范化完整 SKU 一致，避免把近似颜色、容量、激活、套装当成同款。文字别名或不支持的型号可能保守地留待确认。手机、平板和 Mac 必须含容量、单一颜色、地区、激活、成色；除 iPhone 外还须内存，Mac 须明确芯片和统一内存，不能拿统一内存数值补 SSD 容量。主机要求地区；所有产品要求可识别的型号与成色。未能识别的型号不会自动放行。
 
 明确颜色别名仅包括 `星宇橙 ↔ cosmic orange`、`深蓝/深蓝色 ↔ deep blue`、`银色/银 ↔ silver`、`勃艮第酒红 ↔ burgundy`、`冰川蓝 ↔ glacier blue`。星宇橙不等于泛橙，深蓝不等于冰川蓝或泛蓝，勃艮第酒红不等于泛红。`Pro Max/ProMax` 等价；`PM` 只在已支持的 iPhone 型号及明确规格边界内等价，不能替换任意英文 PM。`未激活/预激活/已激活` 是三个不同状态；未知或互相矛盾的状态仍待确认。别名不补成色、地区、容量或其他缺项。
 

@@ -12,6 +12,7 @@ const { tools } = require("../mcp/remote-schema");
 
 async function main() {
   await require("./remote-tools-regressions")();
+  await require("./expanded-sku-regressions")();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hym-mcp-test-"));
   const file = path.join(dir, "checks.json");
   const token = crypto.randomBytes(32).toString("hex");

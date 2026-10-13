@@ -15,7 +15,7 @@ const evidence = object({
   observedAt: timestamp,
   validUntil: timestamp
 });
-const sku = { ...string(300), description: "完整型号、内存/容量、精确颜色、地区、激活/封装状态、套装等；不支持的或不完整规格只会待确认。" };
+const sku = { ...string(300), description: "完整品牌、型号、内存/容量、精确颜色、地区、成色、激活状态与套装等；Mac 另含芯片、统一内存。未知字段写字段名 unknown，不自动补齐；不支持的或不完整规格只会待确认。仍为字符串，不增加 JSON 字段。" };
 const quoteItem = object({
   idempotencyKey: string(100), sku, price: { ...money, minimum: 1 }, text: string(4000), evidence,
   conditions: object({ specification: verification, acceptance: verification, deductions: verification, settlement: verification })

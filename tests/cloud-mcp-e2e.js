@@ -115,7 +115,7 @@ async function main() {
     assert.equal((await call(a, "submit_lead", lead("reader"), reader)).body.result.isError, true);
     assert.equal((await call(a, "submit_lead", { ...lead("unknown-field"), userId: "fake" })).body.result.isError, true);
     assert.equal((await call(a, "submit_lead", lead("source", { evidence: evidence("unapproved", "x") }))).body.result.isError, true);
-    assert.equal((await call(a, "submit_lead", lead("family", { sku: "MacBook 全新" }))).body.result.isError, true);
+    assert.equal((await call(a, "submit_lead", lead("family", { sku: "UnknownBrand 全新" }))).body.result.isError, true);
     assert.deepEqual({ reads, writes }, beforeScopes, "tool/source/family and malformed arguments fail before storage");
     assert.equal((await call(a, "get_status", { limit: 51 })).body.result.isError, true);
     assert.equal((await rpc(a, "ping", { blob: "x".repeat(33000) })).status, 413);

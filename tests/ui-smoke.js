@@ -81,6 +81,10 @@ async function main() {
   try {
     h.context.huaweiFixture = { lead: { sku: "华为 nova 15 Pro 12+256 国行 黑色 全新未激活" } };
     assert.equal(h.run("categoryOf(huaweiFixture)"), "phone", "existing Huawei UI classification needs no production change");
+    for (const [sku, category] of [["OPPO Find X8", "phone"], ["一加 Ace 5", "phone"], ["iQOO 13", "phone"], ["三星 Galaxy S25", "phone"], ["realme GT 7", "phone"], ["荣耀 400", "phone"], ["小米平板 7", "tablet"], ["Xiaomi Pad 7", "tablet"], ["iPad Air", "tablet"], ["Apple Mac mini", "computer"], ["MacBook Pro", "computer"]]) {
+      h.context.familyFixture = { lead: { sku } };
+      assert.equal(h.run("categoryOf(familyFixture)"), category, sku);
+    }
     assert.equal(h.calls.length, 0, "disconnected page must not call old/public APIs");
     assert.equal(e.get("checksUrl").value, "https://haoyangmao.koocuu.com/api/mcp");
     assert.equal(e.get("checksList").children.length, 0, "no automatic example data");

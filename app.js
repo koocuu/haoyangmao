@@ -1,7 +1,7 @@
 ﻿"use strict";
 const ui = Object.fromEntries(["settingsOpen", "settingsClose", "settingsDialog", "connectionForm", "checksUrl", "checksToken", "checksConnect", "checksDisconnect", "settingsMessage", "checksStatus", "refreshBtn", "countAll", "countVerified", "countPending", "countExpired", "workspace", "opportunitySearch", "categoryFilter", "statusFilters", "sortOrder", "checksList", "listState", "stateTitle", "stateDescription", "stateAction", "listCount", "detailPanel", "detailContent", "detailClose", "detailBack", "githubLogin", "githubLogout", "accountStatus", "legacyConnection", "authRetry"].map(id => [id, document.getElementById(id)]));
 const conditionLabels = { finalPrice: "最终实付", eligibility: "购买资格", stock: "库存与地区", purchaseRules: "购买限制", specification: "回收规格", acceptance: "收货条件", deductions: "扣费条件", settlement: "结算条件" };
-const categoryLabels = { phone: "手机", tablet: "平板", console: "主机", earbuds: "耳机", camera: "影像", other: "其他" };
+const categoryLabels = { phone: "手机", tablet: "平板", computer: "电脑", console: "主机", earbuds: "耳机", camera: "影像", other: "其他" };
 const pageState = { connection: null, items: [], phase: "disconnected", selectedId: null, detailOpen: false, search: "", category: "all", status: "all", sort: "profit", syncedAt: null, error: "", pollTimer: null, expiryTimer: null };
 const moneyFormat = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const authState = { phase: "loading", enabled: false, authenticated: false, legacyEnabled: false, csrfToken: "", error: "", generation: 0, loggingOut: false };
@@ -27,8 +27,11 @@ function relativeTime(value) {
   return `${Math.floor(minutes / 1440)} 天前`;
 }
 function categoryOf(check) {
-  const family = HymDealEngine.extractSkuFactsV2(check.lead?.sku || check.pendingText || "").family;
-  if (["iphone", "redmi", "xiaomi", "oneplus", "huawei", "honor", "oppo", "vivo"].includes(family)) return "phone";
+  const sku = check.lead?.sku || check.pendingText || "";
+  const family = HymDealEngine.extractSkuFactsV2(sku).family;
+  if (family === "mac") return "computer";
+  if (family === "xiaomi" && /(?:小米|xiaomi)\s*(?:平板|pad)/i.test(sku)) return "tablet";
+  if (["iphone", "redmi", "xiaomi", "oneplus", "huawei", "honor", "oppo", "vivo", "samsung", "realme"].includes(family)) return "phone";
   if (family === "ipad") return "tablet";
   if (["switch", "ps5"].includes(family)) return "console";
   if (family === "airpods") return "earbuds";
