@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { tools } = require("./remote-schema");
+const { publicError } = require("../lib/remote-core");
 const { CheckService } = require("../lib/remote-checks");
 const versions = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const { loadConfig, telegramNotifier, hash } = require("../lib/remote-config");
@@ -75,8 +76,7 @@ function createRemoteServer({ config, service }) {
       respond({ content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: false });
     } catch (error) {
       // Return only controlled validation messages, never OS paths, tokens or provider errors.
-      const safe = /^(Invalid |Tool not authorized|Check not found|Idempotency conflict|Recent |Source not authorized|Product family not authorized|Opportunity identity|Older lead|Server busy)/.test(error.message);
-      respond({ content: [{ type: "text", text: safe ? error.message : "Processing failed; inspect local service" }], isError: true });
+      respond({ content: [{ type: "text", text: error.message === "Server busy" ? "Server busy" : publicError(error) }], isError: true });
     }
   });
   server.requestTimeout = 15000;

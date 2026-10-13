@@ -29,7 +29,7 @@ npm run mcp:remote
 |---|---|
 | `HYM_MCP_CONFIG_JSON` | 受信配置 JSON，参考 `config/remote-mcp.example.json`；删除 `localImportWorkspace`，Host 设为 `haoyangmao.koocuu.com`，Origin 设为 `https://haoyangmao.koocuu.com` |
 | `HYM_MCP_BLOB_READ_WRITE_TOKEN` | 独立 **Private** Blob 的读写凭证；不要替换原 `BLOB_READ_WRITE_TOKEN` |
-| `HYM_GROK_TOKEN` | 至少 32 字节随机值，授权四个工具；交给 Bot |
+| `HYM_GROK_TOKEN` | 至少 32 字节随机值；工具权限由 `clients[].tools` 明确授权，样例为七个工具；交给 Bot |
 | `HYM_DASHBOARD_TOKEN` | 独立随机值，仅授权 `get_status`；用于网页 |
 | `HYM_TELEGRAM_BOT_TOKEN` | 提醒机器人凭证；未设置时通知为 `not_configured` |
 | `HYM_TELEGRAM_CHAT_ID` | 提醒接收会话，由 workspace 的 `telegramChatEnv` 引用 |
@@ -55,7 +55,7 @@ Blob 与 Functions 使用同一区域 `iad1`。私有存储为 `haoyangmao-mcp-p
 | Authorization | `Bearer <HYM_GROK_TOKEN>` |
 | headers | `Content-Type: application/json`、`Accept: application/json, text/event-stream`、初始化后 `MCP-Protocol-Version: 2025-11-25` |
 
-先调用 `initialize`，再发 `notifications/initialized`，然后 `tools/list` 获取当前凭证有权使用的工具。服务端只公开下面四个工具，不提供支付、下单、桌面控制或平台风控绕过能力。
+先调用 `initialize`，再发 `notifications/initialized`，然后 `tools/list` 获取当前凭证有权使用的工具。原四个工具向后兼容，新增三工具需管理员在 Production `HYM_MCP_CONFIG_JSON` 的 Bot `tools` 列表明确加入；不会自动扩大旧凭证权限，Dashboard 仍仅 `get_status`。客户端缓存旧 Schema 时先重新连接、对照实时 `tools/list`，不能为兼容缓存放宽服务端校验。接口不提供支付、下单、桌面控制或平台风控绕过能力。
 
 ## 工具 Schema
 
@@ -66,13 +66,16 @@ Blob 与 Functions 使用同一区域 `iad1`。私有存储为 `haoyangmao-mcp-p
 | `get_pending_checks` | 可选 `offset`、`limit`（1–50） | `items`、`nextOffset`、`total` |
 | `submit_lead` | `idempotencyKey`、`opportunityKey`、`text`、`sku`、`buyPrice`、`evidence`、`conditions` | 核验记录、计算结果、通知状态、`submissionId`、`replayed` |
 | `submit_quote` | `idempotencyKey`、`checkId`、`sku`、`price`、`evidence`、`conditions`；可选 `text` | 同上 |
-| `get_status` | 可选 `checkId`；列表模式支持 `offset`、`limit` | 单条核验或分页列表，读取时重新判断有效期 |
+| `get_status` | 可选 `checkId`；列表模式支持 `offset`、`limit`、`includeVoided`（默认 false） | 单条核验或分页列表，读取时重新判断有效期；指定 checkId 可审计作废记录 |
+| `submit_quotes` | `checkId`、`quotes`（1–10条）；每项为单条报价参数，去掉 `checkId` | 核验投影（顶层 `id`、`result`、`notification`）及逐项 `items` |
+| `preview_check` | `submit_lead` 全部参数及 `quotes`（0–10条；每项同批量报价） | `preview: true`、`result`、`items`、`diagnostics`；不返回可用于正式提交的 checkId |
+| `void_check` | `checkId`、`reason` | 核验投影、不可覆写的 `voided: { reason, by, at }`、`replayed`；`result.status` 为 `voided` |
 
 所有对象拒绝未知字段。金额为人民币，最多两位小数，不接受调用方利润/成本/门槛/身份/通知状态。字符串、请求体、分页、队列与记录总量均设上限。
 
 `evidence` 必须包含：
 
-- `source`：真实直接证据出处，且必须来自管理员配置的来源白名单。样例已加入 `什么值得买`、`小红书`、`微信群`；生产仍需同步修改 `HYM_MCP_CONFIG_JSON` 并部署代码，修改样例文件本身不会改变线上授权。
+- `source`：真实直接证据出处，且必须来自管理员配置的来源白名单。样例包含 `什么值得买`、`小红书`、`微信群`、`酷安`；生产仍需同步修改 `HYM_MCP_CONFIG_JSON` 并部署代码，修改样例文件本身不会改变线上授权。
 - `reference`：来源链接、截图 ID 或可追溯的证据编号。作为普通文本保存，服务端不会请求该地址、读取本地路径或执行内容。
 - `excerpt`：支持价格、规格和条件的原文摘要；不要包含密码、账号令牌等秘密。
 - `observedAt`、`validUntil`：带时区的 ISO 时间。拒绝未来观测和 7 天前的观测；服务端 TTL 仍会限制有效期，Bot 不能延长它。
@@ -89,12 +92,13 @@ Blob 与 Functions 使用同一区域 `iad1`。私有存储为 `haoyangmao-mcp-p
 - 直接看到什么值得买爆料就使用 `source: "什么值得买"`；直接核实小红书原文就使用 `source: "小红书"`。仅看到微信群转述时使用 `source: "微信群"`，`reference` 可包含脱敏群标识、消息编号/时间和真实小红书原文链接，例如 `群代号/消息编号；原文 https://www.xiaohongshu.com/<真实引用>`。链接只是引用文本，不会由服务端抓取。
 - 群消息自称「AH 报价」不等于已亲自核实 AH。未直接确认 AH 的报价、规格、扣费与结算条件时，不能借 `source: "AH"` 绕过来源授权，也不能把转述条件填成 `verified`。来源白名单是权限边界，不是对证据真实性的背书。
 - 「踏浪」「小鸽」都是微信小程序。只有 Bot 亲自打开对应小程序，直接看到并核实报价、完整规格与回收条件后，`submit_quote` 的 `evidence.source` 才能使用中文原名 `"踏浪"` 或 `"小鸽"`；不使用英文别名。群里转述的小程序报价仍使用 `"微信群"`，未亲自核实的条件保持 `unknown`。
+- 只有 Bot 直接读到酷安原帖、亲自核实对应内容时才使用 `source: "酷安"`；群里转述的酷安内容仍使用 `"微信群"`，不能凭引用链接宣称已直接核实。
 - `text` 必须包含与结构化 `sku` 相同的完整 SKU，保留品牌前缀、型号、RAM/容量、颜色、地区、激活与成色等实际已知字段。比较会规范化大小写/空白，但不会补出缺失信息；例如 `sku` 带 `Apple` 而 `text` 只写 `iPhone`，仍可能触发「购买文本未包含完整结构化 SKU」。金额文本与 `buyPrice` 也须相符，小数价格不能舍去小数。
 - Huawei 当前增量识别仅包括明确的 `nova 15`、`nova 15 Pro`。**以下是完整 SKU 格式示例，不是用户当前真实线索的已核实规格**：`华为 nova 15 Pro 12+256 国行 黑色 全新未激活`。未知型号、缺少 RAM/容量、单一颜色、地区、激活或成色仍保持 `pending_confirmation`。不要给实际仅知道 `华为 nova 15 Pro 12+256` 的线索编造黑色/国行/未激活等字段；未确认国补资格、地区资格或库存时分别填 `eligibility: unknown`、`stock: unknown`，其余待确认条件同理。
 - `observedAt` 是源内容被实际观察、价格/条件被实际核验的时间，使用带时区 ISO 时间，不是请求发送时间，也不能把旧内容重新盖成当前时间。已知记录 `09:40Z` 等于北京时间 `17:40`，服务器默认购买有效期到 `10:40Z` / `18:40`；即使源 `validUntil` 填到次日，60 分钟 TTL 截短仍正确。此例用于说明时间规则，不表示该记录发生过金额解析错误。
 - 默认购买 TTL 为 60 分钟、回收 TTL 为 30 分钟（管理员配置可变）。每份证据的有效期为 `min(源 validUntil, observedAt + 对应 TTL)`；完整机会再取购买与可用回收证据的较早截止。优惠活动截止时间可约束源 `validUntil`，不能代替一次新鲜核验，也不能延长服务端 TTL。
 - 实际补做价格、资格、库存或回收条件核验后，保留同一个 `opportunityKey`、完整 SKU、直接来源和稳定 `reference`，使用**新的 `idempotencyKey`**并填真实新的 `observedAt`。重放同一幂等键只能发送完全相同业务参数；重放旧请求不会刷新核验时间，改内容重用旧键会冲突。缺失条件不要为获得利润结论而捏造。
-- 同一 `opportunityKey` 已绑定直接 `source`、`reference` 和规范化完整 SKU 的身份，不允许改变这些字段。若先用不完整 SKU 建立待确认，随后实际核验补齐 SKU，须使用**新的 `opportunityKey` + 新的 `idempotencyKey`**建立完整规格机会，否则会返回 `Opportunity identity cannot change`。只有条件、价格或时间更新且身份保持不变，才沿用原 `opportunityKey`；本轮不改变身份或删除协议。
+- 同一 `opportunityKey` 已绑定直接 `source`、`reference` 和规范化完整 SKU 的身份，不允许改变实际规格或证据归属。若先用不完整 SKU 建立待确认，随后实际核验补齐 SKU，须使用**新的 `opportunityKey` + 新的 `idempotencyKey`**建立完整规格机会，否则会返回 `Opportunity identity cannot change`。只有条件、价格或时间更新且身份保持不变，才沿用原 `opportunityKey`。下述明确等价别名可以兼容原记录，但不会改写其旧 identity；作废也不是删除或改变身份。
 
 在**纯模拟、规格完整且购买与回收全部条件均已核实**的测试中，`2320 − 1964 − 20 − 0 − 30 = 306` 可达到门槛。用户当前真实线索的国补资格、库存及其他缺失条件未核实，不能据这个算式称为已核实机会，也不由本轮代提交。
 
@@ -168,11 +172,23 @@ Blob 与 Functions 使用同一区域 `iad1`。私有存储为 `haoyangmao-mcp-p
 
 默认结果：`5800 - 5599 - 20运费 - 0平台费 - 30风险缓冲 = 151`。门槛 80，因此在所有条件满足且报价未过期时为 `eligible`。
 
-Bot 每轮先读 `get_pending_checks`，再逐条补充购买和回收证据，用 `get_status` 确认处理。待办中本地导入的 `opportunityKey` 必须原样用于 `submit_lead`。同一机会补充证据时保持 `opportunityKey`、SKU、来源和 `reference` 稳定，另换 `idempotencyKey`；相同幂等键重试必须发送相同业务参数。
+Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；真正提交时 `submit_lead` 建立机会，再用 `submit_quotes` 一次提交同一机会的多家报价，最后 `get_status` 确认。待办仍可通过 `get_pending_checks` 读取，原 `submit_quote` 单条调用保留。待办中本地导入的 `opportunityKey` 必须原样用于 `submit_lead`。同一机会补充证据时保持 `opportunityKey`、SKU、来源和 `reference` 稳定，另换 `idempotencyKey`；相同幂等键重试必须发送相同业务参数。
+
+### 批量、预览与作废
+
+`submit_quotes` 的形状为 `{ "checkId": "<现有id>", "quotes": [<报价项>, ...] }`。每个报价项必须有 `idempotencyKey/sku/price/evidence/conditions`，可选 `text`，不再带 `checkId`。逐项结果为 `{ index, success: true, submissionId, replayed }` 或 `{ index, success: false, error }`。每项独立复用 `submit_quote` 的幂等收据：单条与跨批重放一致，同键异参失败，不产生重复报价。外层格式、工具权限、checkId 跨空间或已作废错误整批拒绝；条目 Schema、来源、品类、时间、幂等或容量错误只回滚该项。未知存储/CAS 结果不返回虚假的已保存成功，也不自动重试外部通知。成功项及收据一起提交后，只根据全部报价的最终结果决定通知，避免先高价通知、后低价跌破门槛。
+
+`preview_check` 是 `submit_lead` 参数加 `quotes` 数组，允许空数组。两个 key 仅用于与真实提交一致的临时计算，不产生任何持久化幂等收据。它不读取已有记录、不 prune/import/save、不构造 Blob、不 acquire/release、不通知；只在纯内存中复用真实计算引擎、当前凭证 workspace 的可信 policy、同样的证据/条件/授权校验。临时报价 ID 与正式保存的 ID 无关。`result.reasons` 给出缺失条件；`diagnostics.missingSpecs` 列出购买 SKU 缺项，`diagnostics.quotes` 逐项列出 `missingSpecs`、`differences`（如 model/storage/colors/activation/fullSku）及条件/时间/文本原因。条目验证失败还会在 `items` 和诊断中明确返回错误。
+
+`void_check({ checkId, reason })` 自然幂等，不要求额外 key。首次原因、操作者与时间不可被后续请求覆盖。作废记录不进入默认 `get_status` 列表、计数、分页或 `get_pending_checks`；`get_status({ checkId })` 或 `includeVoided: true` 可审计本空间记录。保留期内禁止单条/批量/旧幂等重放或等价别名复活，利润为 null，不再发起通知；原收据与通知摘要保留。发送前会重新检查状态，但不能撤回已经开始的外部发送，也不能把 `sent` 或 `delivery_unknown` 宣称为已取消。作废审计沿用近期核验的7天保留条件（同时受线索观测时间限制），不是永久 tombstone；本轮不删除或作废用户已有记录。
 
 ## 匹配、利润与提醒
 
 前后端复用 `lib/deal-engine.js`；单行/OCR 文本复用现有解析器。SKU 模糊识别仅用于候选，自动提醒额外要求规范化完整 SKU 一致，避免把近似颜色、容量、激活、套装当成同款。文字别名或不支持的型号可能保守地留待确认。手机必须含容量、单一颜色、地区、激活、成色；安卓手机另要求 RAM，iPhone 无需补造 RAM。平板要求容量/地区；主机要求地区；所有产品要求可识别的型号与成色。未能识别的型号不会自动放行。
+
+明确颜色别名仅包括 `星宇橙 ↔ cosmic orange`、`深蓝/深蓝色 ↔ deep blue`、`银色/银 ↔ silver`、`勃艮第酒红 ↔ burgundy`、`冰川蓝 ↔ glacier blue`。星宇橙不等于泛橙，深蓝不等于冰川蓝或泛蓝，勃艮第酒红不等于泛红。`Pro Max/ProMax` 等价；`PM` 只在已支持的 iPhone 型号及明确规格边界内等价，不能替换任意英文 PM。`未激活/预激活/已激活` 是三个不同状态；未知或互相矛盾的状态仍待确认。别名不补成色、地区、容量或其他缺项。
+
+旧身份规范化函数与已存 identity 不改写。服务端在本 workspace 有界扫描近期记录，以原 source/reference/完整 SKU 和明确别名作兼容比较；近期记录清理后，对30天旧通知摘要仍使用有限旧别名 hash 候选保护去重，新通知同时保留规范身份摘要。不能用别名换 key 绕过旧通知，也不会批量迁移生产状态。
 
 有效报价按同一来源/规格取最近核验，再从有效且已核实的匹配报价取最低价。其他来源旧 AH 行情不会自动当作 Bot 已核实的回收保证。结构化 `price` 是净回收额，购买实付含购买端费用；配置中的运费是额外寄出成本，避免重复扣费。
 
@@ -187,8 +203,8 @@ Bot 每轮先读 `get_pending_checks`，再逐条补充购买和回收证据，�
 - 私有 Blob 保存最近 7 天的核验、来源、证据、报价、最多 10 次线索旧版本、幂等收据及通知状态；去重通知摘要保存 30 天。本地开发保存到 `data/private/remote-checks.json`。
 - 最多 200 个近期机会、每机会 20 条报价、5000 条幂等收据、10000 条通知摘要。达到上限拒绝新写入，不提前清空幂等或通知保护。云端在请求中清理过期数据；过期读取实时计算。
 - 云端使用 Blob ETag 条件写入，首次创建禁止覆盖，读取不使用缓存；跨实例冲突有界重试，提交结果不确定时不发送通知。文件损坏或存储失败时拒绝处理，不能静默清空重建。本地使用进程锁和原子文件替换；仅本地崩溃遗留锁需要人工确认旧进程已停止后清理。
-- 跨实例限速与并发占位也写入私有 Blob，因此一次 MCP 请求会使用数次 Blob 操作。Hobby 配额需在 Storage/Usage 监控；网页仅连接且可见时轮询，不自动升级套餐。适合个人低频核价。
-- token 固定映射 workspace 与工具权限；不信任请求传入身份。`get_status`、`submit_quote` 都按 workspace 校验 checkId。来源与商品品类由配置白名单限制。
+- 跨实例限速与并发占位也写入私有 Blob，因此一次持久化 MCP 请求会使用数次 Blob 操作。纯预览例外：32KiB 请求、最多10报价、响应大小上限保持，使用每个 warm serverless handler 实例的进程内限速（每凭证120/分钟、总600/分钟）；同步有界计算不排无界队列。它不是跨实例总限额，冷启动/多个实例各自计数；不为预览新增数据库、队列或云端写入。本地服务沿用120/600限速和20请求有界串行队列。Hobby 配额需在 Storage/Usage 监控；网页仅连接且可见时轮询，不自动升级套餐。
+- token 固定映射 workspace 与工具权限；不信任请求传入身份。`get_status`、单条/批量报价、作废都按 workspace 校验 checkId；预览只能用本凭证 workspace 策略。来源与商品品类由配置白名单限制。
 - 仅本地开启 `localImportWorkspace` 时，现有 `data/state.json` 中最近 7 天且品类获准的线索成为该空间待办；云端由 Bot 提交线索，不访问本机文件。
 - 本地网页也必须使用只读 Bearer 凭证连接 MCP，没有新增匿名核验读取接口。静态文件服务改为页面资源及图片证据白名单，私有文件、配置、`.env` 和 Git 目录不可下载。
 - 云端网页打开「设置」，默认地址为本站 `/api/mcp`，填写 **HYM_DASHBOARD_TOKEN**；它只有 `get_status` 权限，凭证仅存页内内存，断开/刷新即清除。无需把写入凭证交给网页。

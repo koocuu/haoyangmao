@@ -99,7 +99,7 @@ async function main() {
     const initialized = await Promise.all([rpc(a, "initialize", { protocolVersion: "2025-11-25" }), rpc(b, "initialize", { protocolVersion: "2025-06-18" })]);
     initialized.forEach((result) => assert.equal(result.status, 200));
     assert.ok(state); assert.equal(state.rates.find((r) => r.key === "grok").count, 2);
-    assert.equal((await rpc(a, "tools/list", {})).body.result.tools.length, 4);
+    assert.equal((await rpc(a, "tools/list", {})).body.result.tools.length, 7);
     assert.deepEqual((await rpc(a, "tools/list", {}, reader)).body.result.tools.map((t) => t.name), ["get_status"]);
     const beforeAuth = { reads, writes };
     assert.equal((await rpc(a, "ping", {}, "wrong")).status, 401);
@@ -177,6 +177,43 @@ async function main() {
     await setClock(now + 60000);
     const business = await worker(env, false);
     await require("./cloud-business-regressions")({ call, value, url: business, lead, quote, evidence, conditions, now });
+    assert.equal(deliveries, 2);
+
+    await setClock(now + 60000);
+    // Actual independent OS handlers: previews cannot touch even lease/rate Blob
+    // state. Different quote aliases agree without changing historical IDs.
+    const aliasSku = "iPhone 17 Pro Max 256GB 深蓝 国行 全新未激活";
+    const quoteAlias = aliasSku.replace("Pro Max", "PM").replace("深蓝", "deep blue");
+    const { checkId: ignoredPreviewId, ...previewQuote } = quote("unused", "preview-q", { sku: quoteAlias, price: 7400, text: `${quoteAlias} 回收7400` });
+    const previewArgs = { ...lead("cloud-preview", { sku: aliasSku, text: `${aliasSku} 实付7000`, buyPrice: 7000, evidence: evidence("酷安", "preview-fixture") }), quotes: [previewQuote] };
+    const beforePreview = { reads, writes, deliveries, state: JSON.stringify(state) };
+    const previews = await Promise.all([call(a, "preview_check", previewArgs), call(b, "preview_check", previewArgs)]);
+    previews.forEach(response => { const p = value(response); assert.equal(p.result.netProfit, 350); assert.deepEqual(p.diagnostics.quotes[0].differences, []); });
+    assert.deepEqual({ reads, writes, deliveries, state: JSON.stringify(state) }, beforePreview);
+
+    const batchLead = value(await call(a, "submit_lead", lead("cloud-batch-final-price", { evidence: evidence("酷安", "cloud-batch-final-price") })));
+    const item = (key, price, source = "小鸽") => { const { checkId, ...q } = quote(batchLead.id, key, { price, text: `${sku} 回收${price}`, evidence: evidence(source, key) }); return q; };
+    const batchArgs = { checkId: batchLead.id, quotes: [item("batch-high", 5800), { ...item("batch-schema", 5800), price: "bad" }, item("batch-source", 5800, "unapproved"), item("batch-high", 5799), item("batch-low", 5650, "踏浪")] };
+    const batchRace = await Promise.all([call(a, "submit_quotes", batchArgs), call(b, "submit_quotes", batchArgs), call(c, "submit_quotes", batchArgs)]);
+    for (const response of batchRace) {
+      const result = value(response); assert.deepEqual(result.items.map(item => item.success), [true, false, false, false, true]);
+      assert.equal(result.result.status, "below_threshold"); assert.equal(result.result.netProfit, 1); assert.equal(result.id, batchLead.id);
+    }
+    assert.equal(state.checks.find(check => check.id === batchLead.id).quotes.length, 2);
+    assert.equal(state.receipts.filter(receipt => receipt.checkId === batchLead.id).length, 3);
+    assert.equal(deliveries, 2, "batch sends no intermediate high-price notification");
+    assert.equal(value(await call(c, "submit_quote", { ...batchArgs.quotes[0], checkId: batchLead.id })).replayed, true);
+    assert.equal((await call(other, "submit_quotes", batchArgs)).body.result.isError, true);
+    // One CAS winner may accept a quote before void; nothing may revive after it.
+    const voidRace = await Promise.all([call(a, "void_check", { checkId: batchLead.id, reason: "isolated production-handler fixture" }), call(b, "submit_quotes", { checkId: batchLead.id, quotes: [item("void-raced", 5650)] })]);
+    assert.equal(value(voidRace[0]).result.status, "voided");
+    const audit = value(await call(c, "get_status", { checkId: batchLead.id })).voided;
+    assert.deepEqual(value(await call(b, "void_check", { checkId: batchLead.id, reason: "must not replace first" })).voided, audit);
+    assert.equal(value(await call(a, "get_status", { limit: 50 })).items.some(check => check.id === batchLead.id), false);
+    assert.equal(value(await call(a, "get_status", { includeVoided: true, limit: 50 })).items.some(check => check.id === batchLead.id), true);
+    assert.equal((await call(other, "void_check", { checkId: batchLead.id, reason: "foreign" })).body.result.isError, true);
+    assert.equal((await call(a, "submit_quotes", batchArgs)).body.result.isError, true);
+    assert.equal((await call(a, "submit_quote", { ...batchArgs.quotes[0], checkId: batchLead.id })).body.result.isError, true);
     assert.equal(deliveries, 2);
 
     await setClock(now + 31 * 60000);

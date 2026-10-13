@@ -11,12 +11,15 @@
 
 ```text
 Grok Bot 发现优惠并核实购买条件、回收规格与报价
-  → submit_lead / submit_quote
+  → preview_check 预览条件与规格问题（不保存、不提醒）
+  → submit_lead + submit_quote / submit_quotes 保存核验
   → 服务端校验 SKU、条件、证据时效并计算净利润
   → 网页机会列表、筛选和只读详情
 ```
 
 `get_pending_checks` 供 Bot 读取待核价商品，`get_status` 供 Bot 和只读网页查询结果。接口上线不代表真实 Grok 客户端已经接入；客户端必须支持带 Bearer 凭证的 MCP Streamable HTTP。
+
+`submit_quotes` 支持同一机会的多家报价逐条提交结果；`void_check` 作废本空间记录并保留近期审计。作废记录不进入默认机会列表，通过 `get_status(checkId)` 仍可查看。详细参数和边界见 [Bot 接入说明](docs/REMOTE_MCP.md)。
 
 网页的「设置」收纳 MCP 地址与只读凭证（`HYM_DASHBOARD_TOKEN`）。凭证只留在当前页面内存中，连接后输入框立即清空，刷新页面需重新填写；断开会清除当前结果和凭证。网页连接状态仅代表看板与接口的连接，不代表 Bot 在线。
 

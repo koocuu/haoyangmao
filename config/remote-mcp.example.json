@@ -4,7 +4,7 @@
   "allowedOrigins": ["https://haoyangmao.koocuu.com", "http://127.0.0.1:8765", "http://localhost:8765"],
   "workspaces": {
     "personal": {
-      "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪", "什么值得买", "小红书", "微信群"],
+      "sources": ["PDD", "淘宝", "AH", "小鸽", "踏浪", "什么值得买", "小红书", "微信群", "酷安"],
       "families": ["iphone", "ipad", "redmi", "xiaomi", "huawei", "switch", "ps5", "airpods", "osmo"],
       "policy": {
         "minimumProfit": 80,
@@ -22,7 +22,7 @@
       "id": "grok",
       "tokenEnv": "HYM_GROK_TOKEN",
       "workspace": "personal",
-      "tools": ["get_pending_checks", "submit_lead", "submit_quote", "get_status"]
+      "tools": ["get_pending_checks", "submit_lead", "submit_quote", "get_status", "submit_quotes", "preview_check", "void_check"]
     },
     {
       "id": "dashboard",

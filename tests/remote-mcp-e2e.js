@@ -11,6 +11,7 @@ const { createServer } = require("../automation-server");
 const { tools } = require("../mcp/remote-schema");
 
 async function main() {
+  await require("./remote-tools-regressions")();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hym-mcp-test-"));
   const file = path.join(dir, "checks.json");
   const token = crypto.randomBytes(32).toString("hex");
@@ -58,7 +59,7 @@ async function main() {
   const value = (result) => { assert.equal(result.isError, false, JSON.stringify(result)); return result.structuredContent; };
   try {
     assert.equal((await rpc("initialize", { protocolVersion: "2025-11-25" })).body.result.protocolVersion, "2025-11-25");
-    assert.equal((await rpc("tools/list", {})).body.result.tools.length, 4);
+    assert.equal((await rpc("tools/list", {})).body.result.tools.length, 7);
     assert.equal((await rpc("tools/list", {}, reader)).body.result.tools.length, 1);
     assert.equal((await rpc("tools/list", {}, "wrong")).status, 401);
     assert.equal((await rpc("tools/list", {}, token, { Origin: "https://evil.example" })).status, 403);
