@@ -42,7 +42,9 @@ OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Privat
 
 2026-10-13 发布准备：专用 OAuth App 已创建，Ray 已完成 GitHub 本人 Confirm access；Production 的三项凭据已通过内存及 Vercel CLI 标准输入配置为 Secret，无本机秘密文件。登录开关及手动回退均设为 `1`，新部署生效。真实 GitHub 往返、云端会话撤销及手机登录须在发布后另行验收，不能以本地测试替代。
 
-2026-10-13 Production 实测：路由修正提交 `d505c685717619828d3ef12838ac389c8524ebda` 达到 READY；koocuu 完成真实 GitHub 授权（仅 Public data），会话和只读看板返回 200，读取 4 条现有记录，网页自动显示 4 条；刷新保留会话。错误 CSRF 返回 403；点击退出返回 204，随后 session 显示未登录、dashboard 返回 401、页面清空。运行日志抽查 22 条均为 info，未见 OAuth 查询值或秘密赋值；Drains API 返回 404，不能声称已核实无外部日志转发。没有新增模拟商品或发送通知。手机真实登录仍待 Ray 确认，因此保留手动回退。
+2026-10-13 Production 实测：路由修正提交 `d505c685717619828d3ef12838ac389c8524ebda` 达到 READY；koocuu 完成真实 GitHub 授权（仅 Public data），会话和只读看板返回 200，读取 4 条现有记录，网页自动显示 4 条；刷新保留会话。错误 CSRF 返回 403；点击退出返回 204，随后 session 显示未登录、dashboard 返回 401、页面清空；再次登录成功。运行日志抽查 22 条均为 info，未见 OAuth 查询值或秘密赋值；MCP 的 Drains 查询返回 404，随后通过 Vercel CLI 同一项目只读查询确认 0 个 Drain。没有新增模拟商品或发送通知。手机真实登录仍待 Ray 确认，因此保留手动回退。
+
+首页别名跳转补丁 `6d4e9c4a97d207e2c82e3ed57e4c6bccf1f9f7f2` 达到 READY 后再次核验：正式域名 200，`haoyangmao-peach.vercel.app/` 返回 307 到正式域名；会话跨部署仍有效、页面显示 4 条。团队受保护的 Vercel 别名会先进入 Vercel SSO，不关闭平台保护；日常使用正式域名。七工具 Schema、纯内存预览及发布静态资源一致性检查通过。
 
 1. `npm test`、`npm run test:remote`、`npm run test:auth`；本地隔离测试不能充当真实 GitHub 登录证明。
 2. Production READY 且 SHA 与发布提交一致；匿名 dashboard 401，session 不泄露私有记录，伪造/重复回调不得签发会话。
