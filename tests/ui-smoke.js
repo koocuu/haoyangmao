@@ -21,7 +21,7 @@ class Element {
   showModal() { this.open = true; }
   close() { this.open = false; }
 }
-function harness(records = [], fetcher) {
+function harness(records = [], fetcher, session = { enabled: false, authenticated: false, legacyEnabled: true }) {
   let clock = Date.now(), nextTimer = 0;
   const timers = new Map(), elements = new Map(), calls = [], created = [], listeners = {}, windowListeners = {};
   for (const match of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) elements.set(match[2], new Element(match[1]));
@@ -33,10 +33,12 @@ function harness(records = [], fetcher) {
     setTimeout(fn, delay) { const id = ++nextTimer; timers.set(id, { fn, delay, at: clock + delay }); return id; }, clearTimeout(id) { timers.delete(id); },
     localStorage: { getItem() { throw new Error("storage access forbidden"); }, setItem() { throw new Error("credential storage forbidden"); } },
     sessionStorage: { getItem() { throw new Error("storage access forbidden"); }, setItem() { throw new Error("credential storage forbidden"); } },
-    location: { protocol: "https:", origin: "https://haoyangmao.koocuu.com" },
+    location: { protocol: "https:", origin: "https://haoyangmao.koocuu.com", assign(path) { this.assigned = path; } },
     document: { hidden: false, getElementById(id) { return elements.get(id) || null; }, createElement(tag) { created.push(tag); return new Element(tag); }, addEventListener(type, fn) { listeners[type] = fn; } },
     window: { matchMedia: () => ({ matches: false }), addEventListener(type, fn) { windowListeners[type] = fn; } },
     fetch: async (url, options) => {
+      if (url === "/api/auth/session") return { ok: true, json: async () => session };
+      if (url === "/api/auth/logout") { calls.push({ url, options }); return { ok: true, status: 204 }; }
       const message = JSON.parse(options.body); calls.push({ url, options, message });
       if (fetcher) return fetcher(message, options);
       if (message.method === "initialize") return response({ protocolVersion: "2025-11-25" });
@@ -49,7 +51,8 @@ function harness(records = [], fetcher) {
   vm.createContext(context); vm.runInContext(engine, context); vm.runInContext(app, context);
   return {
     context, elements, calls, timers, created, run: code => vm.runInContext(code, context), clock: () => clock,
-    async connect() { elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); await vm.runInContext("connectChecks()", context); },
+    async ready() { await new Promise(resolve => setImmediate(resolve)); },
+    async connect() { await new Promise(resolve => setImmediate(resolve)); elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); await vm.runInContext("connectChecks()", context); },
     async advance(ms) { clock += ms; const due = [...timers].filter(([, item]) => item.at <= clock); for (const [id, item] of due) { timers.delete(id); await item.fn(); } },
     async visibility(hidden) { context.document.hidden = hidden; await listeners.visibilitychange(); await Promise.resolve(); },
     cleanup() { vm.runInContext("disconnectChecks()", context); }
@@ -148,6 +151,7 @@ async function main() {
   await limited.advance(90000); assert.equal(limited.calls.length, requests + 1); limited.cleanup();
   let resolveOld;
   const delayed = harness([], () => new Promise(resolve => { resolveOld = resolve; }));
+  await delayed.ready();
   delayed.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); const pendingRequest = delayed.run("connectChecks()");
   assert.equal(delayed.elements.get("checksToken").value, ""); assert.equal(delayed.run("pageState.phase"), "loading"); delayed.run("disconnectChecks()");
   resolveOld(response({ protocolVersion: "2025-11-25" })); await pendingRequest; assert.equal(delayed.run("pageState.connection"), null); assert.equal(delayed.elements.get("checksList").children.length, 0); assert.equal(delayed.calls.length, 1); delayed.cleanup();
@@ -161,6 +165,7 @@ async function main() {
     if (message.id === undefined) return { ok: true };
     return response({ structuredContent: { items: [replacement], total: 1, nextOffset: null }, isError: false });
   });
+  await swapped.ready();
   swapped.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex");
   const previousConnection = swapped.run("connectChecks()");
   await swapped.connect();
@@ -173,8 +178,31 @@ async function main() {
   resolveRefresh(response({ structuredContent: { items: [], total: 0, nextOffset: null }, isError: false })); await firstRefresh; reentry.cleanup();
 
   const invalid = harness([]); invalid.elements.get("checksUrl").value = "https://user:pass@example.com/api/mcp"; invalid.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); await invalid.run("connectChecks()"); assert.equal(invalid.calls.length, 0); assert.equal(invalid.elements.get("checksToken").value, ""); invalid.cleanup();
+  const signedOut = harness([], undefined, { enabled: true, authenticated: false, legacyEnabled: true });
+  await signedOut.ready(); assert.equal(signedOut.calls.length, 0); assert.equal(signedOut.elements.get("countAll").textContent, "—");
+  assert.equal(signedOut.elements.get("stateAction").textContent, "使用 GitHub 登录");
+  await signedOut.elements.get("stateAction").emit("click"); assert.equal(signedOut.context.location.assigned, "/api/auth/login"); signedOut.cleanup();
+  const session = { enabled: true, authenticated: true, legacyEnabled: false, csrfToken: crypto.randomBytes(32).toString("base64url"), user: { login: "koocuu" } };
+  const signedIn = harness(records, undefined, session); await signedIn.ready();
+  assert.equal(signedIn.run("pageState.phase"), "ready"); assert.equal(signedIn.elements.get("countAll").textContent, "5");
+  assert.equal(signedIn.elements.get("legacyConnection").hidden, true);
+  for (const call of signedIn.calls) { assert.equal(call.url, "https://haoyangmao.koocuu.com/api/dashboard"); assert.equal(call.options.credentials, "same-origin"); assert.equal(call.options.headers.Authorization, undefined); assert.equal(call.options.headers["X-CSRF-Token"], session.csrfToken); }
+  await signedIn.elements.get("githubLogout").emit("click"); assert.equal(signedIn.run("authState.authenticated"), false); assert.equal(signedIn.elements.get("checksList").children.length, 0); assert.equal(signedIn.calls.at(-1).url, "/api/auth/logout"); signedIn.cleanup();
+  const expiredSession = harness(records, undefined, session); await expiredSession.ready();
+  expiredSession.context.fetch = async () => ({ ok: false, status: 401 }); await expiredSession.run("refreshChecks()");
+  assert.equal(expiredSession.run("pageState.connection"), null); assert.equal(expiredSession.run("authState.authenticated"), false); assert.match(expiredSession.elements.get("stateDescription").textContent, /登录已失效/); assert.equal(expiredSession.timers.size, 0); expiredSession.cleanup();
+  const logoutFailure = harness(records, undefined, session); await logoutFailure.ready(); logoutFailure.context.fetch = async () => ({ ok: false, status: 503 });
+  await logoutFailure.run("logoutGithub()"); assert.equal(logoutFailure.run("authState.authenticated"), true); assert.equal(logoutFailure.elements.get("checksList").children.length, 0); assert.match(logoutFailure.elements.get("settingsMessage").textContent, /退出尚未确认/); logoutFailure.cleanup();
+  const malformedSession = harness([], undefined, { ...session, user: { login: "intruder" } }); await malformedSession.ready(); assert.equal(malformedSession.calls.length, 0); assert.equal(malformedSession.run("authState.phase"), "error"); malformedSession.cleanup();
+  const lateSession = harness([]); await lateSession.ready(); let finishSession;
+  lateSession.context.fetch = () => new Promise(resolve => { finishSession = resolve; });
+  const sessionCheck = lateSession.run("checkSession()"); lateSession.run("disconnectChecks()");
+  finishSession({ ok: true, json: async () => session }); await sessionCheck; assert.equal(lateSession.run("pageState.connection"), null); lateSession.cleanup();
+  const hiddenSession = harness([], undefined, session); hiddenSession.context.document.hidden = true; await hiddenSession.ready();
+  assert.equal(hiddenSession.calls.length, 0); assert.equal(hiddenSession.elements.get("countAll").textContent, "—"); assert.equal(hiddenSession.elements.get("stateTitle").textContent, "正在读取核验记录");
+  await hiddenSession.visibility(false); await hiddenSession.ready(); assert.equal(hiddenSession.elements.get("countAll").textContent, "0"); hiddenSession.cleanup();
   assert.ok(!/localStorage|sessionStorage|innerHTML|api\/automation|api\/kdocs|submit_lead|submit_quote/.test(app), "front end must remain read only and have no legacy requests/storage/HTML sinks");
-  console.log("opportunity UI smoke ok: real core fixtures/151/61/pending/stale/8 conditions/filter/sort/mobile detail/200 pagination/expiry/XSS/empty/error/loading/hidden/disconnect/reentry/token memory");
+  console.log("opportunity UI smoke ok: real core fixtures/profit/stale/conditions/200 pagination/XSS/lifecycle/backoff; GitHub bootstrap/CSRF/no bearer/logout/expiry/hidden/unknown counts/legacy fallback");
 }
 module.exports = main;
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

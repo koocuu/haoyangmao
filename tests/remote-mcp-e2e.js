@@ -104,7 +104,7 @@ async function main() {
     assert.equal(sent.length, 1);
     const pageData = value(await call("get_status", {}, reader));
     assert.equal(pageData.items.find((item) => item.id === id).result.netProfit, 151);
-    assert.match(await (await fetch(pageUrl)).text(), /Grok 商品核验/);
+    assert.match(await (await fetch(pageUrl)).text(), /id="checksList"/); // Opportunity mount survives login/heading copy changes.
     assert.equal((await fetch(`${pageUrl}/data/private/remote-checks.json`)).status, 403);
     assert.equal((await fetch(`${pageUrl}/config/remote-mcp.local.json`)).status, 403);
     assert.equal((await fetch(`${pageUrl}/.git/config`)).status, 403);

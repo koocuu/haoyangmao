@@ -368,10 +368,10 @@ async function deploymentClosure() {
   const root = path.join(__dirname, "..");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hym-cloud-bundle-"));
   try {
-    for (const file of ["api/mcp.js", "lib/remote-handler.js", "lib/remote-blob.js", "lib/remote-config.js", "lib/remote-core.js", "lib/remote-text.js", "lib/deal-engine.js", "lib/quote-ocr-parser.js", "mcp/remote-schema.js"]) {
+    for (const file of ["api/mcp.js", "api/dashboard.js", "api/auth/[action].js", "lib/github-store.js", "lib/github-auth.js", "lib/github-handler.js", "lib/dashboard-handler.js", "lib/remote-handler.js", "lib/remote-blob.js", "lib/remote-config.js", "lib/remote-core.js", "lib/remote-text.js", "lib/deal-engine.js", "lib/quote-ocr-parser.js", "mcp/remote-schema.js"]) {
       const target = path.join(dir, file); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(path.join(root, file), target);
     }
-    const script = "const assert=require('assert/strict');const handler=require('./api/mcp');assert.equal(typeof handler,'function');assert.ok(!Object.keys(require.cache).some(p=>/automation-server|remote-checks|remote-server|haoyangmao-mcp/.test(p)));let body;handler({headers:{}},{setHeader(){},end(b){body=b;}}).then(()=>assert.match(body,/configuration unavailable/));";
+    const script = "const assert=require('assert/strict');const handler=require('./api/mcp');assert.equal(typeof handler,'function');assert.equal(typeof require('./api/dashboard'),'function');assert.equal(typeof require('./api/auth/[action]'),'function');assert.ok(!Object.keys(require.cache).some(p=>/automation-server|remote-checks|remote-server|haoyangmao-mcp/.test(p)));let body;handler({headers:{}},{setHeader(){},end(b){body=b;}}).then(()=>assert.match(body,/configuration unavailable/));";
     const result = spawnSync(process.execPath, ["-e", script], { cwd: dir, env: { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const ignore = fs.readFileSync(path.join(root, ".vercelignore"), "utf8");

@@ -1,9 +1,10 @@
 ﻿"use strict";
-const ui = Object.fromEntries(["settingsOpen", "settingsClose", "settingsDialog", "connectionForm", "checksUrl", "checksToken", "checksConnect", "checksDisconnect", "settingsMessage", "checksStatus", "refreshBtn", "countAll", "countVerified", "countPending", "countExpired", "workspace", "opportunitySearch", "categoryFilter", "statusFilters", "sortOrder", "checksList", "listState", "stateTitle", "stateDescription", "stateAction", "listCount", "detailPanel", "detailContent", "detailClose", "detailBack"].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(["settingsOpen", "settingsClose", "settingsDialog", "connectionForm", "checksUrl", "checksToken", "checksConnect", "checksDisconnect", "settingsMessage", "checksStatus", "refreshBtn", "countAll", "countVerified", "countPending", "countExpired", "workspace", "opportunitySearch", "categoryFilter", "statusFilters", "sortOrder", "checksList", "listState", "stateTitle", "stateDescription", "stateAction", "listCount", "detailPanel", "detailContent", "detailClose", "detailBack", "githubLogin", "githubLogout", "accountStatus", "legacyConnection", "authRetry"].map(id => [id, document.getElementById(id)]));
 const conditionLabels = { finalPrice: "最终实付", eligibility: "购买资格", stock: "库存与地区", purchaseRules: "购买限制", specification: "回收规格", acceptance: "收货条件", deductions: "扣费条件", settlement: "结算条件" };
 const categoryLabels = { phone: "手机", tablet: "平板", console: "主机", earbuds: "耳机", camera: "影像", other: "其他" };
 const pageState = { connection: null, items: [], phase: "disconnected", selectedId: null, detailOpen: false, search: "", category: "all", status: "all", sort: "profit", syncedAt: null, error: "", pollTimer: null, expiryTimer: null };
 const moneyFormat = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const authState = { phase: "loading", enabled: false, authenticated: false, legacyEnabled: false, csrfToken: "", error: "", generation: 0, loggingOut: false };
 
 function node(tag, className = "", text) {
   const element = document.createElement(tag);
@@ -150,20 +151,29 @@ function closeDetail() {
 }
 function render() {
   const counts = { verified: 0, pending: 0, expired: 0 }; for (const item of pageState.items) counts[checkView(item).kind]++;
-  ui.countAll.textContent = String(pageState.items.length); ui.countVerified.textContent = String(counts.verified); ui.countPending.textContent = String(counts.pending); ui.countExpired.textContent = String(counts.expired);
+  const known = !!pageState.connection && !!pageState.syncedAt && pageState.phase !== "error";
+  ui.countAll.textContent = known ? String(pageState.items.length) : "—"; ui.countVerified.textContent = known ? String(counts.verified) : "—"; ui.countPending.textContent = known ? String(counts.pending) : "—"; ui.countExpired.textContent = known ? String(counts.expired) : "—";
   const items = filteredItems();
   if (!items.some(check => check.id === pageState.selectedId)) { pageState.selectedId = null; pageState.detailOpen = false; }
   ui.checksList.replaceChildren(...items.map(renderRow)); ui.checksList.setAttribute("aria-busy", String(pageState.phase === "loading"));
   ui.listState.hidden = items.length > 0; ui.stateAction.hidden = false;
-  if (!pageState.connection) { ui.stateTitle.textContent = "连接后查看商品机会"; ui.stateDescription.textContent = "在设置中填写只读凭证，读取 Bot 提交的核验记录。这里不会生成示例机会。"; ui.stateAction.textContent = "打开设置"; }
-  else if (pageState.phase === "loading") { ui.stateTitle.textContent = "正在读取核验记录"; ui.stateDescription.textContent = "完整读取商品与来源证据，请稍候。"; ui.stateAction.hidden = true; }
+  if (!pageState.connection) {
+    ui.stateTitle.textContent = authState.phase === "loading" ? "正在检查登录状态" : authState.phase === "error" ? "暂时无法检查登录状态" : authState.enabled ? "登录后查看商品机会" : "连接后查看商品机会";
+    ui.stateDescription.textContent = authState.error || (authState.phase === "loading" ? "已有登录会自动恢复，无需填写凭证。" : authState.enabled ? "仅 koocuu 可以使用 GitHub 登录。登录后自动读取 Bot 的核验记录。" : "GitHub 登录尚未启用，可在设置中使用只读连接。未连接时不代表机会数量为零。");
+    ui.stateAction.textContent = authState.phase === "error" ? "重新检查" : authState.enabled ? "使用 GitHub 登录" : "打开设置";
+    ui.stateAction.hidden = authState.phase === "loading" || authState.loggingOut;
+  }
+  else if (pageState.phase === "loading" || (!pageState.syncedAt && pageState.phase !== "error")) { ui.stateTitle.textContent = "正在读取核验记录"; ui.stateDescription.textContent = document.hidden ? "回到此页面后自动读取记录。" : "完整读取商品与来源证据，请稍候。"; ui.stateAction.hidden = true; }
   else if (pageState.phase === "error") { ui.stateTitle.textContent = "暂时无法读取记录"; ui.stateDescription.textContent = pageState.error; ui.stateAction.textContent = "重新读取"; }
   else if (!pageState.items.length) { ui.stateTitle.textContent = "暂时没有商品机会"; ui.stateDescription.textContent = "接口已连接，尚未读到核验记录。网页连接不代表 Grok Bot 已接入。"; ui.stateAction.hidden = true; }
   else { ui.stateTitle.textContent = "没有符合筛选的商品"; ui.stateDescription.textContent = "试试其他关键词、品类或核验状态。"; ui.stateAction.textContent = "清除筛选"; }
-  ui.listCount.textContent = `${items.length} / ${pageState.items.length} 条记录`;
+  ui.listCount.textContent = known ? `${items.length} / ${pageState.items.length} 条记录` : "尚未读取记录";
   ui.refreshBtn.disabled = !pageState.connection || pageState.connection.loading || document.hidden;
   ui.checksDisconnect.disabled = !pageState.connection;
-  ui.checksStatus.textContent = !pageState.connection ? "接口未连接" : pageState.phase === "loading" ? "正在同步核验记录…" : pageState.phase === "error" ? "接口读取失败" : pageState.syncedAt ? `接口已连接 · ${formatTime(pageState.syncedAt)} 同步` : "等待接口响应";
+  ui.checksStatus.textContent = !pageState.connection ? authState.phase === "loading" ? "正在检查登录…" : authState.enabled ? "尚未登录" : "接口未连接" : pageState.phase === "loading" ? "正在同步核验记录…" : pageState.phase === "error" ? "接口读取失败" : pageState.syncedAt ? `${pageState.connection.mode === "session" ? "koocuu · " : "接口已连接 · "}${formatTime(pageState.syncedAt)} 同步` : "等待接口响应";
+  ui.accountStatus.textContent = authState.loggingOut ? "正在退出…" : authState.authenticated ? "已登录 koocuu · 只读查看" : authState.phase === "loading" ? "正在检查登录…" : authState.enabled ? "仅允许 koocuu 登录" : "GitHub 登录尚未启用";
+  ui.githubLogin.hidden = !authState.enabled || authState.authenticated; ui.githubLogout.hidden = !authState.authenticated; ui.githubLogout.disabled = authState.loggingOut;
+  ui.authRetry.hidden = authState.phase !== "error"; ui.legacyConnection.hidden = !authState.legacyEnabled;
   renderDetail(); scheduleExpiry();
 }
 function scheduleExpiry() {
@@ -177,7 +187,8 @@ function schedulePoll() {
   if (pageState.connection && !document.hidden) pageState.pollTimer = setTimeout(refreshChecks, Math.max(30000, (pageState.connection.retryNotBefore || 0) - Date.now()));
 }
 function disconnectChecks() {
-  const old = pageState.connection; pageState.connection = null; old?.controller?.abort(); if (old) old.token = "";
+  authState.generation++;
+  const old = pageState.connection; pageState.connection = null; old?.controller?.abort(); if (old) { old.token = ""; old.csrfToken = ""; }
   clearTimeout(pageState.pollTimer); clearTimeout(pageState.expiryTimer);
   pageState.items = []; pageState.phase = "disconnected"; pageState.selectedId = null; pageState.detailOpen = false; pageState.syncedAt = null; pageState.error = "";
   ui.checksToken.value = ""; ui.settingsMessage.textContent = "已断开，凭证与记录已从当前页面清除。"; render();
@@ -185,6 +196,7 @@ function disconnectChecks() {
 async function connectChecks() {
   const token = ui.checksToken.value.trim(); ui.checksToken.value = "";
   try {
+    if (!authState.legacyEnabled) throw new Error("手动凭证连接未启用，请使用 GitHub 登录。");
     const url = new URL(ui.checksUrl.value);
     const loopback = url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname);
     if ((url.protocol !== "https:" && !loopback) || !["/mcp", "/api/mcp"].includes(url.pathname) || url.username || url.password || url.search || url.hash) throw new Error("请输入 HTTPS 的 /api/mcp 地址，或本机 loopback 的 /mcp 地址。");
@@ -198,12 +210,15 @@ function assertCurrent(connection, signal) {
 }
 async function requestRpc(connection, method, params, id, controller) {
   assertCurrent(connection, controller.signal);
-  const headers = { Authorization: `Bearer ${connection.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" };
+  const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" };
+  if (connection.mode === "session") headers["X-CSRF-Token"] = connection.csrfToken;
+  else headers.Authorization = `Bearer ${connection.token}`;
   const message = { jsonrpc: "2.0", method }; if (params !== undefined) message.params = params; if (id !== undefined) message.id = id;
-  const response = await fetch(connection.url, { method: "POST", redirect: "error", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), headers, body: JSON.stringify(message) });
+  const response = await fetch(connection.url, { method: "POST", credentials: connection.mode === "session" ? "same-origin" : "omit", cache: "no-store", redirect: "error", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), headers, body: JSON.stringify(message) });
   assertCurrent(connection, controller.signal);
   if (!response.ok) {
     const error = new Error("无法读取接口，请检查地址、只读凭证及服务状态。");
+    if (connection.mode === "session" && [401, 403].includes(response.status)) error.sessionExpired = true;
     if ([429, 503].includes(response.status)) {
       const value = response.headers?.get("Retry-After") || "";
       const delay = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - Date.now();
@@ -248,6 +263,10 @@ async function refreshChecks() {
     pageState.items = items; pageState.phase = "ready"; pageState.syncedAt = new Date().toISOString(); pageState.error = "";
   } catch (error) {
     if (connection !== pageState.connection) return;
+    if (error.sessionExpired) {
+      disconnectChecks(); authState.authenticated = false; authState.csrfToken = "";
+      authState.error = "登录已失效，请重新使用 GitHub 登录。"; render(); return;
+    }
     if (controller.signal.aborted || document.hidden) { pageState.phase = pageState.syncedAt ? "ready" : "paused"; }
     else {
       connection.failures = Math.min(5, (connection.failures || 0) + 1);
@@ -263,22 +282,61 @@ async function refreshChecks() {
 }
 function resetFilters() { pageState.search = ""; pageState.category = "all"; pageState.status = "all"; ui.opportunitySearch.value = ""; ui.categoryFilter.value = "all"; updateStatusFilters(); render(); }
 function updateStatusFilters() { for (const button of ui.statusFilters.querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.status === pageState.status)); }
-function openSettings() { ui.settingsMessage.textContent = pageState.connection ? "当前网页持有只读连接，凭证不会回填或保存。" : "刷新页面后需重新填写只读凭证。"; ui.settingsDialog.showModal(); }
+function openSettings() { ui.settingsMessage.textContent = authState.error || (authState.authenticated ? "GitHub 登录会自动恢复，网页仅有查看权限。" : "手动连接仅供回退使用，凭证不会保存。" ); ui.settingsDialog.showModal(); }
+function loginGithub() { if (authState.enabled && !authState.loggingOut) location.assign("/api/auth/login"); }
+async function checkSession() {
+  if (authState.loggingOut) return;
+  const generation = ++authState.generation;
+  authState.phase = "loading"; authState.error = ""; render();
+  try {
+    const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error("Session unavailable");
+    const data = await response.json();
+    if (generation !== authState.generation) return;
+    if (!data || typeof data.enabled !== "boolean" || typeof data.authenticated !== "boolean" || typeof data.legacyEnabled !== "boolean" || (data.authenticated && (!data.enabled || data.user?.login !== "koocuu" || typeof data.csrfToken !== "string" || !/^[A-Za-z0-9_-]{32,256}$/.test(data.csrfToken)))) throw new Error("Invalid session");
+    Object.assign(authState, { phase: "ready", enabled: data.enabled, authenticated: data.authenticated, legacyEnabled: data.legacyEnabled, csrfToken: data.authenticated ? data.csrfToken : "" });
+    if (!data.authenticated && new URL(location.href || location.origin).searchParams.get("login") === "failed") authState.error = "GitHub 登录未完成或账号无访问权限，请重新登录。";
+    if (data.authenticated) {
+      disconnectChecks(); pageState.connection = { mode: "session", url: new URL("/api/dashboard", location.origin).href, csrfToken: data.csrfToken, loading: false, initialized: false, controller: null };
+      await refreshChecks();
+    }
+  } catch {
+    if (generation !== authState.generation) return;
+    authState.phase = "error"; authState.error = "登录服务暂时无法访问，请稍后重新检查。";
+  }
+  render();
+}
+async function logoutGithub() {
+  if (!authState.authenticated || authState.loggingOut) return;
+  const csrfToken = authState.csrfToken;
+  disconnectChecks(); authState.loggingOut = true; render();
+  try {
+    const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error", headers: { "X-CSRF-Token": csrfToken }, signal: AbortSignal.timeout(12000) });
+    if (response.status !== 204 && response.status !== 401) throw new Error("Logout unavailable");
+    authState.authenticated = false; authState.csrfToken = ""; authState.error = "";
+    ui.settingsMessage.textContent = "已退出登录。";
+  } catch { authState.error = "退出尚未确认，请重试退出。当前页面已清除记录。"; ui.settingsMessage.textContent = authState.error; }
+  finally { authState.loggingOut = false; render(); }
+}
 function init() {
   ui.checksUrl.value = location.protocol === "https:" ? new URL("/api/mcp", location.origin).href : "http://127.0.0.1:8766/mcp";
   ui.settingsOpen.addEventListener("click", openSettings); ui.settingsClose.addEventListener("click", () => ui.settingsDialog.close());
+  ui.githubLogin.addEventListener("click", loginGithub); ui.githubLogout.addEventListener("click", logoutGithub); ui.authRetry.addEventListener("click", checkSession);
   ui.connectionForm.addEventListener("submit", event => { event.preventDefault(); connectChecks(); }); ui.checksDisconnect.addEventListener("click", disconnectChecks); ui.refreshBtn.addEventListener("click", refreshChecks);
   ui.detailClose.addEventListener("click", closeDetail); ui.detailBack.addEventListener("click", closeDetail);
   ui.opportunitySearch.addEventListener("input", () => { pageState.search = ui.opportunitySearch.value; render(); });
   ui.categoryFilter.addEventListener("change", () => { pageState.category = ui.categoryFilter.value; render(); });
   ui.sortOrder.addEventListener("change", () => { pageState.sort = ui.sortOrder.value; render(); });
   for (const button of ui.statusFilters.querySelectorAll("button")) button.addEventListener("click", () => { pageState.status = button.dataset.status; updateStatusFilters(); render(); });
-  ui.stateAction.addEventListener("click", () => { if (!pageState.connection) openSettings(); else if (pageState.phase === "error") refreshChecks(); else resetFilters(); });
+  ui.stateAction.addEventListener("click", () => { if (!pageState.connection) { if (authState.phase === "error") return checkSession(); if (authState.enabled) loginGithub(); else openSettings(); } else if (pageState.phase === "error") refreshChecks(); else resetFilters(); });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { clearTimeout(pageState.pollTimer); clearTimeout(pageState.expiryTimer); pageState.connection?.controller?.abort(); }
     else { render(); refreshChecks(); }
   });
   window.addEventListener("pagehide", disconnectChecks);
+  window.addEventListener("pageshow", event => { if (event.persisted && location.protocol === "https:") checkSession(); });
+  if (location.protocol !== "https:") Object.assign(authState, { phase: "ready", legacyEnabled: true });
   render();
+  if (location.protocol === "https:") checkSession();
 }
 init();
