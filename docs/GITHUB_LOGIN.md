@@ -6,7 +6,7 @@
 
 不更换 HTML/CSS/Node/Vercel 技术栈，不加数据库、付费认证平台或新依赖。复用已有 Private Blob 的独立认证文件；与商品核验文件分离，不迁移业务状态。沿用已有配额，登录产生少量认证存储请求，不承诺平台用量永远为零；没有开通付费计划。
 
-- `GET /api/auth/session`：只返回登录功能状态、是否登录、回退是否启用；验证过会话才返回 `user.login` 和 CSRF 值，不返回任何 OAuth/MCP Token。
+- `GET /api/auth/session`：返回登录功能状态、是否登录；兼容字段 `legacyEnabled` 固定为 `false`。验证过会话才返回 `user.login` 和 CSRF 值，不返回任何 OAuth/MCP Token。
 - `GET /api/auth/login`、`GET /api/auth/callback`：GitHub 授权往返，成功固定回首页；失败仅带 `login=failed`，不回显 provider 错误。
 - `POST /api/auth/logout`：同源及 `X-CSRF-Token`，服务端撤销会话后返回 204。
 - `POST /api/dashboard`：Cookie、同源及 CSRF 检查，内部复用原只读 Dashboard principal，仅允许 MCP initialize、initialized 和 get_status，不获得七工具写权限。
@@ -32,11 +32,15 @@ OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Privat
 | `GITHUB_CLIENT_SECRET` | 专用 Client Secret，Secret 类型 |
 | `AUTH_SECRET` | 独立密码学随机密钥，Secret 类型 |
 | `HYM_GITHUB_LOGIN_ENABLED` | `1` 开启；缺省关闭，配置不齐也关闭 |
-| `HYM_LEGACY_DASHBOARD_ENABLED` | 缺省或 `1` 保留手动只读 Token；`0` 关闭外部 Dashboard Bearer，但不影响 Grok 或 Cookie 看板 |
+| `HYM_LEGACY_DASHBOARD_ENABLED` | 已弃用；Production 设为 `0`，代码不再读取，无法开启公网旧口令回退 |
 
-修改环境配置后需新部署。开发直接在 main，未准备好的登录保持关闭。先上线兼容版本、完成真实 GitHub 往返和手机登录；Ray 确认后再关闭手动回退。无需为此新增 Neon、消息队列或付费服务。
+修改环境配置后需新部署。开发直接在 main，未准备好的登录保持关闭。Ray 已确认手机登录成功，网页及公网接口的手动只读口令回退已删除；保留服务端只读 principal 以沿用原 workspace，不迁移记录。无需新增 Neon、消息队列或付费服务。
 
-## 验收与回退
+## 验收与故障处理
+
+2026-10-14 空列表诊断：真实 koocuu GitHub 会话正常，Cookie 看板、旧只读口令和 Grok 的默认查询均为 0；同空间审计查询返回 8 条，全部已有 `voided` 标记，最新一批由 Grok 于北京时间 10:10–10:12 作废。不是 GitHub 身份映射错误、报价过期隐藏或跨凭证分库。未恢复、迁移或改写这些历史记录。网页新增「已作废」只读审计及全作废空态，保持默认机会列表排除作废。审计仍受既有 7 天保留条件约束。
+
+回归覆盖：Grok 提交记录后 Cookie 看板读取同一 ID；作废后默认 0、审计可读原原因/身份；异 workspace 记录不泄露；审计读取不改历史对象。公网旧 Dashboard Bearer 即使旧开关为 `1` 也在存储前返回 401，Grok 七工具保持可用。以下 2026-10-13 内容是过渡期验收历史，不代表当前仍保留回退。
 
 2026-10-13 本地验收：负责人独立运行 `npm test`（十组）、`npm run test:remote`、`npm run test:auth` 和 `git diff --check` 均通过。隔离测试覆盖跨实例 nonce 单次消费、会话轮换/撤销、登出与兑换并发、未知写入结果、CSRF、只读看板、Grok 权限隔离和共同请求截止时间。320px 浏览器页面已用本地模拟会话检查布局与登录/退出展示；这不是实际 GitHub 登录验收。
 
@@ -52,6 +56,6 @@ OAuth state 10 分钟、PKCE S256；跨实例消费一次的 nonce 存在 Privat
 4. 手机确认登录成功。不具备第二账号时，账号拒绝只能标注为本地模拟覆盖，不能写成生产实测。
 5. 保持七工具和 Grok 鉴权回归；本轮不提交或作废任何模拟商品，不发送通知。
 
-故障时将登录开关设为 `0`、回退开关为 `1` 后重新部署，恢复原手动只读连接；不轮换 Grok 或其它项目凭据。认证状态损坏时拒绝读取，不能清空认证/业务文件绕过。应用不记录 callback query、Cookie、code 或 OAuth 响应；如启用平台 log drain，须在采集端去掉这些字段，不分享真实回调地址栏截图。
+登录故障时可将登录开关设为 `0` 后重新部署以暂停网页登录，排查配置及认证日志；这不会恢复手动口令入口，不轮换 Grok 或其它项目凭据。认证状态损坏时拒绝读取，不能清空认证/业务文件绕过。应用不记录 callback query、Cookie、code 或 OAuth 响应；如启用平台 log drain，须在采集端去掉这些字段，不分享真实回调地址栏截图。
 
 依据：[personalSkills 第8节](https://github.com/koocuu/personalSkills/blob/main/deploy-github-vercel-neon/SKILL.md)、[Afterglow 运维记录](https://github.com/koocuu/Afterglow/blob/main/docs/architecture/github-auth-operations.md)、[World 登录记录](https://github.com/koocuu/World/blob/main/docs/github-login.md)、[GitHub OAuth 文档](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)。保留它们对数字 ID、固定 issuer、回调域名、Cookie 与配置范围的经验，并补上本项目服务端 nonce 消费和注销撤销。

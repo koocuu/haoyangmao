@@ -26,7 +26,7 @@ function harness(records = [], fetcher, session = { enabled: false, authenticate
   const timers = new Map(), elements = new Map(), calls = [], created = [], listeners = {}, windowListeners = {};
   for (const match of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) elements.set(match[2], new Element(match[1]));
   elements.get("categoryFilter").value = "all"; elements.get("sortOrder").value = "profit";
-  for (const state of ["all", "verified", "pending", "expired"]) { const button = new Element("button"); button.dataset.status = state; elements.get("statusFilters").appendChild(button); }
+  for (const state of ["all", "verified", "pending", "expired", "voided"]) { const button = new Element("button"); button.dataset.status = state; elements.get("statusFilters").appendChild(button); }
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : [clock])); } static now() { return clock; } }
   const context = {
     console, Date: Clock, Intl, URL, AbortController, AbortSignal, DOMException,
@@ -44,7 +44,7 @@ function harness(records = [], fetcher, session = { enabled: false, authenticate
       if (message.method === "initialize") return response({ protocolVersion: "2025-11-25" });
       if (message.id === undefined) return { ok: true };
       assert.equal(message.params.name, "get_status");
-      const { offset, limit } = message.params.arguments; assert.equal(limit, 50);
+      const { offset, limit, includeVoided } = message.params.arguments; assert.equal(limit, 50); assert.equal(includeVoided, true);
       return response({ structuredContent: { items: records.slice(offset, offset + limit), nextOffset: offset + limit < records.length ? offset + limit : null, total: records.length }, isError: false });
     }
   };
@@ -52,7 +52,7 @@ function harness(records = [], fetcher, session = { enabled: false, authenticate
   return {
     context, elements, calls, timers, created, run: code => vm.runInContext(code, context), clock: () => clock,
     async ready() { await new Promise(resolve => setImmediate(resolve)); },
-    async connect() { await new Promise(resolve => setImmediate(resolve)); elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); await vm.runInContext("connectChecks()", context); },
+    async connect() { await new Promise(resolve => setImmediate(resolve)); session = { enabled: true, authenticated: true, csrfToken: crypto.randomBytes(32).toString("base64url"), user: { login: "koocuu" } }; await vm.runInContext("checkSession()", context); },
     async advance(ms) { clock += ms; const due = [...timers].filter(([, item]) => item.at <= clock); for (const [id, item] of due) { timers.delete(id); await item.fn(); } },
     async visibility(hidden) { context.document.hidden = hidden; await listeners.visibilitychange(); await Promise.resolve(); },
     cleanup() { vm.runInContext("disconnectChecks()", context); }
@@ -86,10 +86,10 @@ async function main() {
       assert.equal(h.run("categoryOf(familyFixture)"), category, sku);
     }
     assert.equal(h.calls.length, 0, "disconnected page must not call old/public APIs");
-    assert.equal(e.get("checksUrl").value, "https://haoyangmao.koocuu.com/api/mcp");
+    assert.equal(e.has("checksToken"), false); assert.equal(e.has("connectionForm"), false);
     assert.equal(e.get("checksList").children.length, 0, "no automatic example data");
     await h.connect();
-    assert.equal(e.get("checksToken").value, ""); assert.equal(h.run("pageState.phase"), "ready");
+    assert.equal(h.run("pageState.phase"), "ready");
     assert.equal(e.get("checksList").children.length, 5); assert.equal(e.get("countVerified").textContent, "3"); assert.equal(e.get("countPending").textContent, "1"); assert.equal(e.get("countExpired").textContent, "1");
     const rows = e.get("checksList").children;
     assert.match(rows[0].textContent, /\+¥151/); assert.match(rows[1].textContent, /\+¥120/); assert.match(rows[2].textContent, /\+¥61.*低于门槛/);
@@ -109,8 +109,22 @@ async function main() {
     h.context.window.matchMedia = () => ({ matches: true }); h.run('selectCheck("151")'); assert.ok(e.get("detailBack").focused); await e.get("detailBack").emit("click"); assert.equal(e.get("workspace").dataset.detailOpen, "false");
     await h.visibility(true); assert.equal(h.timers.size, 0); const beforeHidden = h.calls.length; await h.run("refreshChecks()"); assert.equal(h.calls.length, beforeHidden);
     await h.visibility(false); await new Promise(resolve => setImmediate(resolve)); assert.ok([...h.timers.values()].some(timer => timer.delay === 30000));
-    h.run("disconnectChecks()"); assert.equal(e.get("checksList").children.length, 0); assert.equal(h.run("pageState.connection"), null); assert.equal(h.timers.size, 0); assert.match(e.get("checksStatus").textContent, /未连接/);
+    h.run("disconnectChecks()"); assert.equal(e.get("checksList").children.length, 0); assert.equal(h.run("pageState.connection"), null); assert.equal(h.timers.size, 0); assert.match(e.get("checksStatus").textContent, /尚未登录/);
   } finally { h.cleanup(); }
+
+  const voided = structuredClone(records[0]); voided.id = "voided-record";
+  voided.voided = { reason: "用户确认买入价无效 <img src=x onerror=alert(1)>", by: "grok", at: new Date().toISOString() };
+  // Even a stale/malformed numeric eligible result cannot promote a tombstone.
+  const allVoided = harness([voided]); await allVoided.connect();
+  assert.equal(allVoided.elements.get("countAll").textContent, "0"); assert.equal(allVoided.elements.get("countPending").textContent, "0");
+  assert.equal(allVoided.elements.get("checksList").children.length, 0); assert.match(allVoided.elements.get("stateDescription").textContent, /1 条近期记录均已作废/);
+  await allVoided.elements.get("stateAction").emit("click"); assert.equal(allVoided.elements.get("checksList").children.length, 1);
+  assert.equal(allVoided.run("checkView(pageState.items[0]).profit"), null); assert.doesNotMatch(allVoided.elements.get("checksList").textContent, /\+¥151/);
+  allVoided.run('selectCheck("voided-record")'); assert.match(allVoided.elements.get("detailContent").textContent, /作废时间.*操作身份：grok.*作废原因/s);
+  assert.match(allVoided.elements.get("detailContent").textContent, /<img src=x onerror=alert\(1\)>/); assert.ok(!allVoided.created.includes("img"));
+  allVoided.run("resetFilters()"); assert.equal(allVoided.elements.get("checksList").children.length, 0); allVoided.cleanup();
+  const mixed = harness([...records, voided]); await mixed.connect(); assert.equal(mixed.elements.get("countAll").textContent, "5"); assert.equal(mixed.elements.get("checksList").children.length, 5);
+  await mixed.elements.get("statusFilters").children[4].emit("click"); assert.equal(mixed.elements.get("checksList").children.length, 1); mixed.cleanup();
 
   // A still-valid purchase with old/unusable quotes is pending, not valid profit.
   const old = fixtures()[0]; old.id = "old-quote"; old.quotes[0].evidence.observedAt = new Date(Date.now() - 31 * 60000).toISOString(); old.result = evaluate(old, defaults);
@@ -156,8 +170,8 @@ async function main() {
   let resolveOld;
   const delayed = harness([], () => new Promise(resolve => { resolveOld = resolve; }));
   await delayed.ready();
-  delayed.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); const pendingRequest = delayed.run("connectChecks()");
-  assert.equal(delayed.elements.get("checksToken").value, ""); assert.equal(delayed.run("pageState.phase"), "loading"); delayed.run("disconnectChecks()");
+  const pendingRequest = delayed.connect(); await delayed.ready();
+  assert.equal(delayed.run("pageState.phase"), "loading"); delayed.run("disconnectChecks()");
   resolveOld(response({ protocolVersion: "2025-11-25" })); await pendingRequest; assert.equal(delayed.run("pageState.connection"), null); assert.equal(delayed.elements.get("checksList").children.length, 0); assert.equal(delayed.calls.length, 1); delayed.cleanup();
   let resolvePrevious, initializations = 0;
   const replacement = fixtures()[1];
@@ -170,8 +184,7 @@ async function main() {
     return response({ structuredContent: { items: [replacement], total: 1, nextOffset: null }, isError: false });
   });
   await swapped.ready();
-  swapped.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex");
-  const previousConnection = swapped.run("connectChecks()");
+  const previousConnection = swapped.connect(); await swapped.ready();
   await swapped.connect();
   resolvePrevious(response({ protocolVersion: "2025-11-25" })); await previousConnection;
   assert.equal(swapped.run("pageState.phase"), "ready"); assert.equal(swapped.elements.get("checksList").children[0].dataset.checkId, "120"); swapped.cleanup();
@@ -181,7 +194,7 @@ async function main() {
   assert.equal(refreshRequests, 1, "manual refresh cannot reenter a pending request");
   resolveRefresh(response({ structuredContent: { items: [], total: 0, nextOffset: null }, isError: false })); await firstRefresh; reentry.cleanup();
 
-  const invalid = harness([]); invalid.elements.get("checksUrl").value = "https://user:pass@example.com/api/mcp"; invalid.elements.get("checksToken").value = crypto.randomBytes(32).toString("hex"); await invalid.run("connectChecks()"); assert.equal(invalid.calls.length, 0); assert.equal(invalid.elements.get("checksToken").value, ""); invalid.cleanup();
+  const disabled = harness([]); await disabled.ready(); assert.equal(disabled.calls.length, 0); assert.equal(disabled.elements.has("checksToken"), false); assert.match(disabled.elements.get("stateDescription").textContent, /GitHub 登录暂不可用/); disabled.cleanup();
   const signedOut = harness([], undefined, { enabled: true, authenticated: false, legacyEnabled: true });
   await signedOut.ready(); assert.equal(signedOut.calls.length, 0); assert.equal(signedOut.elements.get("countAll").textContent, "—");
   assert.equal(signedOut.elements.get("stateAction").textContent, "使用 GitHub 登录");
@@ -189,7 +202,7 @@ async function main() {
   const session = { enabled: true, authenticated: true, legacyEnabled: false, csrfToken: crypto.randomBytes(32).toString("base64url"), user: { login: "koocuu" } };
   const signedIn = harness(records, undefined, session); await signedIn.ready();
   assert.equal(signedIn.run("pageState.phase"), "ready"); assert.equal(signedIn.elements.get("countAll").textContent, "5");
-  assert.equal(signedIn.elements.get("legacyConnection").hidden, true);
+  assert.equal(signedIn.elements.has("legacyConnection"), false);
   for (const call of signedIn.calls) { assert.equal(call.url, "https://haoyangmao.koocuu.com/api/dashboard"); assert.equal(call.options.credentials, "same-origin"); assert.equal(call.options.headers.Authorization, undefined); assert.equal(call.options.headers["X-CSRF-Token"], session.csrfToken); }
   await signedIn.elements.get("githubLogout").emit("click"); assert.equal(signedIn.run("authState.authenticated"), false); assert.equal(signedIn.elements.get("checksList").children.length, 0); assert.equal(signedIn.calls.at(-1).url, "/api/auth/logout"); signedIn.cleanup();
   const expiredSession = harness(records, undefined, session); await expiredSession.ready();
@@ -205,8 +218,8 @@ async function main() {
   const hiddenSession = harness([], undefined, session); hiddenSession.context.document.hidden = true; await hiddenSession.ready();
   assert.equal(hiddenSession.calls.length, 0); assert.equal(hiddenSession.elements.get("countAll").textContent, "—"); assert.equal(hiddenSession.elements.get("stateTitle").textContent, "正在读取核验记录");
   await hiddenSession.visibility(false); await hiddenSession.ready(); assert.equal(hiddenSession.elements.get("countAll").textContent, "0"); hiddenSession.cleanup();
-  assert.ok(!/localStorage|sessionStorage|innerHTML|api\/automation|api\/kdocs|submit_lead|submit_quote/.test(app), "front end must remain read only and have no legacy requests/storage/HTML sinks");
-  console.log("opportunity UI smoke ok: real core fixtures/profit/stale/conditions/200 pagination/XSS/lifecycle/backoff; GitHub bootstrap/CSRF/no bearer/logout/expiry/hidden/unknown counts/legacy fallback");
+  assert.ok(!/localStorage|sessionStorage|innerHTML|api\/automation|api\/kdocs|submit_lead|submit_quote|Authorization|Bearer|\bconnectChecks\(/.test(app), "front end must remain read only and have no legacy requests/storage/HTML sinks");
+  console.log("opportunity UI smoke ok: real core fixtures/profit/stale/conditions/200 pagination/XSS/lifecycle/backoff; GitHub bootstrap/CSRF/no bearer/logout/expiry/hidden/unknown counts/no token fallback/void audit");
 }
 module.exports = main;
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

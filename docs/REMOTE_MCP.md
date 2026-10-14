@@ -30,7 +30,7 @@ npm run mcp:remote
 | `HYM_MCP_CONFIG_JSON` | 受信配置 JSON，参考 `config/remote-mcp.example.json`；删除 `localImportWorkspace`，Host 设为 `haoyangmao.koocuu.com`，Origin 设为 `https://haoyangmao.koocuu.com` |
 | `HYM_MCP_BLOB_READ_WRITE_TOKEN` | 独立 **Private** Blob 的读写凭证；不要替换原 `BLOB_READ_WRITE_TOKEN` |
 | `HYM_GROK_TOKEN` | 至少 32 字节随机值；工具权限由 `clients[].tools` 明确授权，样例为七个工具；交给 Bot |
-| `HYM_DASHBOARD_TOKEN` | 独立随机值，仅授权 `get_status`；网页登录复用其服务端权限，过渡期支持手动回退 |
+| `HYM_DASHBOARD_TOKEN` | 保留于服务端配置用于现有只读 principal；网页登录内部复用 `get_status` 权限，公网不接受此 Bearer |
 | `HYM_TELEGRAM_BOT_TOKEN` | 提醒机器人凭证；未设置时通知为 `not_configured` |
 | `HYM_TELEGRAM_CHAT_ID` | 提醒接收会话，由 workspace 的 `telegramChatEnv` 引用 |
 
@@ -233,7 +233,8 @@ Bot 可先用 `preview_check` 检查完整 SKU、条件和多家回收报价；�
 - 仅本地开启 `localImportWorkspace` 时，现有 `data/state.json` 中最近 7 天且品类获准的线索成为该空间待办；云端由 Bot 提交线索，不访问本机文件。
 - 本地网页也必须使用只读 Bearer 凭证连接 MCP，没有新增匿名核验读取接口。静态文件服务改为页面资源及图片证据白名单，私有文件、配置、`.env` 和 Git 目录不可下载。
 - 云端网页启用 [GitHub 登录](GITHUB_LOGIN.md) 后，仅 koocuu 数字 ID 可登录，安全 Cookie 自动恢复看板；同源 `/api/dashboard` 通过 CSRF 校验后内部复用只读 principal，不向浏览器发送 MCP Token。七工具的 `/api/mcp` 仍独立使用 Bearer，Cookie 不能调用写工具。
-- 过渡期「设置 → 高级：手动只读连接」保留本站 `/api/mcp` 和 **HYM_DASHBOARD_TOKEN**；凭证仅存页内内存，断开/刷新即清除。Ray 确认手机 GitHub 登录后可关闭 `HYM_LEGACY_DASHBOARD_ENABLED`，不影响 Grok。无需把写入凭证交给网页。
+- Ray 已确认手机 GitHub 登录，手动口令 UI 与公网 Dashboard Bearer 回退已删除。旧 `HYM_LEGACY_DASHBOARD_ENABLED` 不再控制代码，即使设为 `1` 也不能重新放行。服务端仍沿用原 Dashboard principal 的 workspace 和只读权限，不迁移业务数据、不向网页发送 Token；Grok 不受影响。
+- 网页通过 `get_status({includeVoided:true})` 在同一 workspace 读取近期审计。默认机会列表和机会计数排除作废记录，「已作废」单独展示原因/时间/操作身份，不恢复机会或利润。MCP 默认 `get_status` 列表过滤语义不变；记录按 workspace 而非凭证或 GitHub 账号归属，7 天保留期不变。
 - 将网页的精确 HTTPS Origin 加入 `allowedOrigins`。`/api/mcp` 的 CORS 不支持任意来源，该接口不使用 Cookie、始终要求 Bearer。Production 只允许自定义域名与其 Origin；新增网页登录接口独立要求会话和同源 CSRF。
 - 网页连接且可见时每 30 秒刷新机会记录，展示净利润、待确认原因和证据时间；待确认或过期时隐藏有效净利润。网页连接成功不代表真实 Bot 已接入。手动分析、原始报价库、OCR 和本机采集入口已从首页移除，底层模块与原数据保留；核验记录不进入公开 Blob。当前不启用 Telegram，网页不提供通知配置入口。
 

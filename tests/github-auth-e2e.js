@@ -82,7 +82,7 @@ async function main() {
     const a = await worker(), b = await worker();
     const disabled = await worker({ HYM_GITHUB_LOGIN_ENABLED: "0", HYM_LEGACY_DASHBOARD_ENABLED: undefined });
     const initial = { reads, writes };
-    assert.deepEqual((await request(disabled, "/api/auth/session")).body, { enabled: false, authenticated: false, legacyEnabled: true });
+    assert.deepEqual((await request(disabled, "/api/auth/session")).body, { enabled: false, authenticated: false, legacyEnabled: false });
     assert.deepEqual((await request(a, "/api/auth/session")).body, { enabled: true, authenticated: false, legacyEnabled: false });
     assert.deepEqual({ reads, writes }, initial, "anonymous/config-disabled session polls use zero Blob operations");
     assert.equal((await request(a, "/api/auth/login", { headers: { Host: "alias.vercel.app" } })).status, 403);
@@ -126,7 +126,27 @@ async function main() {
     const mcpOptions = key => ({ method: "POST", headers: { Authorization: `Bearer ${key}`, Accept: "application/json, text/event-stream" }, body: rpc("tools/list") });
     assert.equal((await request(a, "/api/mcp", mcpOptions(env.HYM_DASHBOARD_TOKEN))).status, 401);
     assert.equal((await request(a, "/api/mcp", mcpOptions(env.HYM_GROK_TOKEN))).body.result.tools.length, 7);
-    const fallback = await worker({ HYM_LEGACY_DASHBOARD_ENABLED: "1" }); assert.equal((await request(fallback, "/api/mcp", mcpOptions(env.HYM_DASHBOARD_TOKEN))).body.result.tools.length, 1);
+    const fallback = await worker({ HYM_LEGACY_DASHBOARD_ENABLED: "1" }); const beforeLegacy = { reads, writes }; assert.equal((await request(fallback, "/api/mcp", mcpOptions(env.HYM_DASHBOARD_TOKEN))).status, 401); assert.deepEqual({ reads, writes }, beforeLegacy, "old flag cannot reopen bearer fallback");
+
+    // Historical Grok submissions are workspace-owned, not GitHub/credential-owned.
+    const sku = "iPhone 17 256GB 黑色 国行 全新未激活";
+    const tool = (name, args) => request(a, "/api/mcp", { ...mcpOptions(env.HYM_GROK_TOKEN), body: rpc("tools/call", { name, arguments: args }) });
+    const leadArgs = { idempotencyKey: "auth-audit-fixture", opportunityKey: "auth-audit-fixture", sku, text: `${sku} 实付2000`, buyPrice: 2000,
+      evidence: { source: "PDD", reference: "isolated-auth-audit", excerpt: "隔离模拟", observedAt: new Date(now).toISOString(), validUntil: new Date(now + 600000).toISOString() },
+      conditions: Object.fromEntries(["finalPrice", "eligibility", "stock", "purchaseRules"].map(key => [key, { status: "unknown", detail: "隔离模拟" }])) };
+    const created = (await tool("submit_lead", leadArgs)).body.result.structuredContent;
+    const dashboardList = args => request(b, "/api/dashboard", { ...dOpts, body: rpc("tools/call", { name: "get_status", arguments: args }) });
+    assert.equal((await dashboardList({})).body.result.structuredContent.items[0].id, created.id);
+    await tool("void_check", { checkId: created.id, reason: "isolated fixture ended" });
+    const oldCheck = records.get(PATH).data.checks.find(check => check.id === created.id);
+    const historical = JSON.stringify(oldCheck);
+    records.get(PATH).data.checks.push({ ...structuredClone(oldCheck), id: "check-foreign-audit", workspace: "other" });
+    assert.equal((await dashboardList({})).body.result.structuredContent.total, 0);
+    const audit = (await dashboardList({ includeVoided: true })).body.result.structuredContent;
+    assert.equal(audit.total, 1); assert.equal(audit.items[0].id, created.id); assert.equal(audit.items[0].result.status, "voided");
+    assert.equal(audit.items[0].voided.by, "grok"); assert.equal(audit.items[0].voided.reason, "isolated fixture ended");
+    assert.equal(JSON.stringify(records.get(PATH).data.checks.find(check => check.id === created.id)), historical, "dashboard audit does not rewrite historical record");
+    assert.equal((await dashboardList({ checkId: "check-foreign-audit" })).body.result.isError, true);
 
     // Login rotates and revokes the browser's previous opaque ID.
     const rotating = await begin(b, sessionCookie); const rotated = await callback(a, rotating, "rotated-code", "", sessionCookie); const newCookie = cookie(rotated, SESSION_COOKIE); assert.notEqual(newCookie, sessionCookie);
@@ -195,8 +215,9 @@ async function main() {
     assert.equal(validateAuthState({ ...authEmpty(), sessions: Array(101).fill({}) }), false);
     assert.equal(validateAuthState({ ...authEmpty(), flows: [{ hash: random() }] }), false);
     assert.ok(records.get(PATH), "business uses separate unchanged checks file");
-    assert.equal(records.get(PATH).data.checks.length, 0); assert.equal(records.get(PATH).data.notices.length, 0);
-    console.log("GitHub auth OS E2E ok: canonical/ID-only/PKCE/issuer/duplicates/state single-use/CAS ACK loss/rotation/revocation/CSRF/session TTL/limits; cookie dashboard only get_status; legacy-off does not affect Grok; anonymous session zero Blob; no real providers/data");
+    assert.equal(records.get(PATH).data.checks.length, 2); assert.equal(records.get(PATH).data.notices.length, 0);
+    assert.equal(JSON.stringify(records.get(PATH).data.checks.find(check => check.id === created.id)), historical, "auth lifecycle leaves historical checks unchanged");
+    console.log("GitHub auth OS E2E ok: canonical/ID-only/PKCE/issuer/duplicates/state single-use/CAS ACK loss/rotation/revocation/CSRF/session TTL/limits; cookie dashboard only get_status; legacy bearer permanently denied/Grok unchanged/workspace history and void audit; anonymous session zero Blob; no real providers/data");
   } finally {
     for (const child of children) if (child.connected) child.send({ stop: true });
     await Promise.all(children.map(child => child.exitCode === null ? once(child, "exit") : Promise.resolve())); backend.close(); backend.closeAllConnections();

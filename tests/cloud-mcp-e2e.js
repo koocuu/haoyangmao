@@ -100,19 +100,19 @@ async function main() {
     initialized.forEach((result) => assert.equal(result.status, 200));
     assert.ok(state); assert.equal(state.rates.find((r) => r.key === "grok").count, 2);
     assert.equal((await rpc(a, "tools/list", {})).body.result.tools.length, 7);
-    assert.deepEqual((await rpc(a, "tools/list", {}, reader)).body.result.tools.map((t) => t.name), ["get_status"]);
+    assert.equal((await rpc(a, "tools/list", {}, reader)).status, 401);
     const beforeAuth = { reads, writes };
     assert.equal((await rpc(a, "ping", {}, "wrong")).status, 401);
     assert.equal((await rpc(a, "ping", {}, token, { Host: "evil.test" })).status, 403);
     assert.equal((await rpc(a, "ping", {}, token, { Origin: "https://evil.test" })).status, 403);
     assert.equal((await rpc(a, "ping", {}, token, { "MCP-Protocol-Version": "wrong" })).status, 400);
     assert.deepEqual({ reads, writes }, beforeAuth, "Bearer/Host/Origin/protocol failures never access storage");
-    const cors = await rpc(a, "ping", {}, reader, { Origin: config.allowedOrigins[0] });
+    const cors = await rpc(a, "ping", {}, token, { Origin: config.allowedOrigins[0] });
     assert.equal(cors.headers.get("access-control-allow-origin"), config.allowedOrigins[0]);
     assert.equal(cors.headers.get("access-control-expose-headers"), "Retry-After");
     assert.equal(cors.headers.get("cache-control"), "no-store");
     const beforeScopes = { reads, writes };
-    assert.equal((await call(a, "submit_lead", lead("reader"), reader)).body.result.isError, true);
+    assert.equal((await call(a, "submit_lead", lead("reader"), reader)).status, 401);
     assert.equal((await call(a, "submit_lead", { ...lead("unknown-field"), userId: "fake" })).body.result.isError, true);
     assert.equal((await call(a, "submit_lead", lead("source", { evidence: evidence("unapproved", "x") }))).body.result.isError, true);
     assert.equal((await call(a, "submit_lead", lead("family", { sku: "UnknownBrand 全新" }))).body.result.isError, true);
@@ -121,11 +121,11 @@ async function main() {
     assert.equal((await rpc(a, "ping", { blob: "x".repeat(33000) })).status, 413);
 
     const beforeRead = writes;
-    assert.equal(value(await call(a, "get_status", {}, reader)).total, 0);
+    assert.equal(value(await call(a, "get_status", {}, token)).total, 0);
     assert.equal(writes - beforeRead, 2, "unchanged status read writes only admission/release, preserving distributed limits");
     state.checks.push({ id: "stale-cleanup-fixture", workspace: "personal", updatedAt: new Date(now - 8 * 86400000).toISOString(), quotes: [] }); revision++;
     const beforeCleanup = writes;
-    assert.equal(value(await call(a, "get_status", {}, reader)).total, 0);
+    assert.equal(value(await call(a, "get_status", {}, token)).total, 0);
     assert.equal(writes - beforeCleanup, 3, "retention cleanup still persists with conditional CAS");
     assert.equal(state.checks.length, 0);
 
@@ -142,7 +142,7 @@ async function main() {
     assert.equal(state.receipts.filter((r) => r.checkId === id).length, 3);
     assert.equal(state.checks.find((r) => r.id === id).quotes.length, 1);
     assert.equal(deliveries, 1);
-    assert.equal(value(await call(c, "get_status", { checkId: id }, reader)).notification.status, "sent");
+    assert.equal(value(await call(c, "get_status", { checkId: id }, token)).notification.status, "sent");
     assert.equal((await call(a, "submit_lead", { ...completed, buyPrice: 1 })).body.result.isError, true);
     value(await call(b, "submit_lead", { ...completed, idempotencyKey: "alias", opportunityKey: "alias" }));
     assert.equal(deliveries, 1);

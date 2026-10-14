@@ -199,7 +199,7 @@ module.exports = async function run() {
   }
   const args = { ...lead("handler-preview"), quotes: [quote("handler-preview-q")] };
   assert.equal((await request("preview_check", args)).body.result.structuredContent.result.netProfit, 350);
-  assert.equal((await request("preview_check", args, env.HYM_DASHBOARD_TOKEN)).body.result.isError, true);
+  assert.equal((await request("preview_check", args, env.HYM_DASHBOARD_TOKEN)).status, 401);
   const legacyConfig = structuredClone(config); legacyConfig.clients[0].tools = ["submit_lead", "submit_quote", "get_status", "get_pending_checks"];
   const legacyHandler = createHandler({ env: { ...env, HYM_MCP_CONFIG_JSON: JSON.stringify(legacyConfig) }, storeFactory: () => { storageCalls++; } });
   assert.equal((await request("preview_check", args, env.HYM_GROK_TOKEN, legacyHandler)).body.result.isError, true);
